@@ -1,0 +1,126 @@
+---
+title: "Outplanting Surveys at Fort Ross Cove 2024"
+author: "by Gina Contolini"
+date: "Updated on `r Sys.Date()`"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup load data, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(tidyverse)
+library(flextable)
+
+data <- read_csv('Outplanting Surveys Data Entry - Sonoma Outplanting Surveys.csv') %>% 
+  dplyr::mutate(date = mdy(date))
+
+fort_ross <- data %>% 
+  filter(site == 'fort_ross_cove')
+
+# read notes 
+fort_ross %>% dplyr::filter(!notes == "NA") %>% dplyr::select(notes)
+```
+
+```{r explore data}
+# juvenile nereocystis counts over time per module
+ggplot(fort_ross, aes(x = date, y = juv_ner_on_line, color = type)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~module) + # experiment with facet_grid also
+  ggtitle('Juvenile Nereocystis counts on line')
+
+# purple urchin counts over time per module
+ggplot(fort_ross, aes(x = date, y = purple_urchin, color = type)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~module) +
+  ggtitle('Purple urchin counts')
+
+# Purple urchin counts per type boxplots
+ggplot(fort_ross, aes(x = type, y = purple_urchin)) +
+  geom_boxplot(fill = 'orchid') +
+  ggtitle('Purple urchin counts') +
+  labs(y = 'Count', x = 'Treatment')
+
+# Red urchin counts per type boxplots
+ggplot(fort_ross, aes(x = type, y = red_urchin)) +
+  geom_boxplot(fill = 'red') +
+  ggtitle('Red urchin counts') +
+  labs(y = 'Count', x = 'Treatment')
+
+# Juv ner on line boxplot
+ggplot(fort_ross, aes(x = type, y = juv_ner_on_line)) +
+  geom_boxplot() +
+  labs(y = 'Count', x = 'Treatment') +
+  ggtitle('Juvenile Nereocystis counts on the lines')
+
+# Juv ner under line boxplot
+ggplot(fort_ross, aes(x = type, y = juv_ner_under_line)) +
+  geom_boxplot() +
+  labs(y = 'Count', x = 'Treatment') +
+  ggtitle('Juvenile Nereocystis counts under the line')
+
+# Lam recruits on line boxplot
+ggplot(fort_ross, aes(x = type, y = lamr_on_line, fill = type)) +
+  geom_boxplot() +
+  labs(y = 'Count', x = 'Treatment') +
+  ggtitle('Laminariales counts on the line')
+
+# Adult ner on line boxplot
+ggplot(fort_ross, aes(x = type, y = adult_ner)) +
+  geom_boxplot() +
+  labs(y = 'Count', x = 'Treatment') +
+  ggtitle('Adult Nereocystis counts on the line')
+
+## Averages (not useful bc there are so many zeros)
+# # Average juvenile nerocystis ON line per treatment
+# fort_ross_ner_line_avg <- fort_ross %>% 
+#   group_by(type) %>% 
+#   summarise(mean_juv_ner = mean(juv_ner_on_line), sd = sd(juv_ner_on_line))
+# 
+# ggplot(fort_ross_ner_line_avg, aes(x = type, y = mean_juv_ner)) +
+#   geom_boxplot(size = 2) +
+#   geom_errorbar(aes(ymin = mean_juv_ner - sd, ymax = mean_juv_ner + sd), width = 0) +
+#   ggtitle("Mean juvenile Nereocystis counts on lines")
+
+# # check out average juvenile nerocystis UNDER line per treatment
+# fort_ross_ner_under_avg <- fort_ross %>% 
+#   group_by(type) %>% 
+#   summarise(mean_juv_ner = mean(juv_ner_under_line), sd = sd(juv_ner_under_line))
+# 
+# ggplot(fort_ross_ner_under_avg, aes(x = type, y = mean_juv_ner)) +
+#   geom_point(size = 2) +
+#   geom_errorbar(aes(ymin = mean_juv_ner - sd, ymax = mean_juv_ner + sd), width = 0)+
+#   ggtitle("Mean juvenile Nereocystis counts under lines")
+
+# # check out average juvenile lamanariales recruits on line per treatment
+# fort_ross_lamr_avg <- fort_ross %>% 
+#   group_by(type) %>% 
+#   summarise(mean_lamr = mean(lamr_on_line), sd = sd(lamr_on_line))
+# 
+# ggplot(fort_ross_lamr_avg, aes(x = type, y = mean_lamr)) +
+#   geom_point(size = 2) +
+#   geom_errorbar(aes(ymin = mean_lamr - sd, ymax = mean_lamr + sd), width = 0)
+```
+
+```{r stats on juv ner avg per trtmnt, warning = FALSE}
+# qqnorm(fort_ross$juv_ner_on_line); qqline(fort_ross$juv_ner_on_line)
+# ggplot(fort_ross, aes(x = juv_ner_on_line)) +
+#   geom_histogram()
+
+# zero inflated poisson (ZIP) generalized linear model
+library(pscl) # for zeroinf model function
+library(car)
+model1 <- zeroinfl(juv_ner_on_line ~ type, data = fort_ross)
+
+# Run an Anova on the ZIP to see if there are treatment differences
+Anova(model1) %>% 
+  flextable() %>% 
+  colformat_double(digits = 5, j = 3) %>% 
+  flextable::set_caption("Analysis of deviance for zero-inflated Poisson model of juvenile Nereocystis counts on line by treatment type (control, soral bag, twine)")
+
+# Show model results
+summary(model1)
+
+```

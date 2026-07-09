@@ -1,0 +1,360 @@
+---
+title: "Beach Surveys"
+subtitle: "by Gina Contolini. Gina.Contolini@noaa.gov"
+author: "Greater Farallones Association and Greater Farallones and Cordell Bank National Marine Sanctuaries"
+date: "Updpated on `r Sys.Date()`"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE, echo = FALSE, message = FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+# the shortcut for pipe is ctrl+shift+M
+
+#### Install and load packages ####
+library(tidyverse) # all tidyverse packages including tidyr, dplyr, lubridate, and ggplot2
+library(ggpubr) # plot aesthetics
+library(flextable) # to make nice tables
+library(broom) # to automatically format model results into a table
+library(scales) # to get commas in axis values
+
+#### Create plot theme ####
+theme_set(theme( 
+   panel.background = element_blank(), # remove panel background
+   # panel.grid.minor.x = element_blank(), # remove minor x axis grid line
+   # panel.grid.major.x = element_blank(), # remove major x axis grid line
+   panel.grid = element_blank(), # remove all grid lines
+   axis.text = element_text(size = 13,color = 'black'), #makes axis labels bigger
+   axis.title = element_text(size = 15), #makes axis title bigger and bold
+   legend.title = element_text(size = 16),
+   legend.text = element_text(size = 16),
+   legend.background = element_blank(),
+   panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.5), # border around the whole plot
+   plot.title = element_text(size = 15),
+   legend.key = element_blank()
+))
+```
+
+```{r load in data}
+beach <- read_csv('Beach survey data - Beach Data.csv') #last downloaded 2024 May 30. Data entered up to 3 April 2024.
+fresh <- read_csv('Beach survey data - Fresh Nereo Data.csv') #last downloaded 2024 May 30
+dry <- read_csv('Beach survey data - Dry Wrack Data.csv') #last downloaded 2024 May 30
+```
+
+```{r beach characteristics}
+beach2 <- beach %>%
+  dplyr::select(date, site, length_m, width_trans_1_m, width_trans_2_m, width_trans_3_m) %>% 
+  dplyr::mutate(date = mdy(date)) %>% # format dates
+  dplyr::mutate_at(c('length_m','width_trans_1_m', 'width_trans_2_m', 'width_trans_3_m'), as.numeric) # make widths numeric
+  
+# Find beach area by averaging the three width transects and then multiplying by lengths.
+beach3 <- beach2 %>%
+  pivot_longer(c(width_trans_1_m, width_trans_2_m, width_trans_3_m), names_to = 'width_reps', values_to = 'width_m') %>%
+  dplyr::group_by(site, date, length_m) %>%
+  dplyr::summarise(mean_width_m = mean(width_m), sd_width = sd(width_m), n_width = n()) %>% 
+  dplyr::mutate(beach_area_m2 = mean_width_m * length_m) %>% 
+  dplyr::filter(!is.na(beach_area_m2)) # to make all dots connect
+  
+# Beach area over time. y is area, x is time, color is beach.
+ggplot(beach3, aes(x = date, y = beach_area_m2, color = site)) +
+  geom_point(size = 4, position = position_dodge(5)) +
+  geom_line(position = position_dodge(5)) +
+  labs(y = bquote(paste('Mean area (',~m^2, ')'))) + # this was so hard to figure out SAVE IT!!!
+  scale_x_date(date_labels = "%Y %b", breaks = '1 month') +
+  theme(axis.text.x = element_text(angle = 40, vjust = 1, hjust = 1)) +
+  ggtitle('Beach areas over time')
+
+# Plot mean beach area by beach
+beach4 <- beach3 %>% # calculate beach area for each day
+  dplyr::group_by(site) %>% 
+  dplyr::summarise(
+    mean_beach_area_m2 = mean(beach_area_m2, na.rm = T), 
+    sd_area = sd(beach_area_m2, na.rm = T), 
+    survey_days = n()
+    )
+
+ggplot(beach4, aes(x = site, y = mean_beach_area_m2)) +
+  geom_errorbar(aes(ymin = mean_beach_area_m2 - sd_area, ymax = mean_beach_area_m2 + sd_area), width = 0) +
+  geom_col() + 
+  labs(y = bquote(paste('Mean area (',~m^2, ')'))) + # this was so hard to figure out SAVE IT!!!
+  scale_y_continuous(expand = c(0,0), limits = c(0, 15000), label = comma) +
+  ggtitle('Mean beach areas')
+
+```
+Beach area was calculated by multiplying the beach length by the average of three beach widths, then averaging over dates (n = `r beach4$survey_days[which(beach4$site=='Agate Beach')]`, `r beach4$survey_days[which(beach4$site=='Fort Ross Cove')]`, `r beach4$survey_days[which(beach4$site=='Ocean Cove')]`, and `r beach4$survey_days[which(beach4$site=='Timber Cove')]` for Agate, Fort Ross, Ocean, and Timber, respectively). Error bars are standard deviation.
+
+```{r fresh nereo analyses}
+# How many bull kelps did we find at each site over time? 
+beach %>% 
+  dplyr::mutate(date = mdy(date)) %>% 
+  # dplyr::select(site, date, `no. bull kelp`) %>% 
+  ggplot(aes(x = date, y = `no. bull kelp`, color = site)) +
+  geom_point(size = 4, position = position_dodge(3)) +
+  geom_line(position = position_dodge(3)) +
+  ggtitle('Bull kelp counts over time') +
+  scale_x_date(date_labels = "%Y %b", breaks = '1 month') +
+  theme(axis.text.x = element_text(angle = 40, vjust = 1, hjust = 1))
+
+# What sizes of bull kelps were found at each site over time?
+fresh2 <- fresh %>% 
+  dplyr::mutate(date = mdy(date))
+
+ggplot(fresh2, aes(x = paste(date, site), y = `bulb_diam (mm)`, color = site)) +
+  geom_point( position = position_dodge()) +
+  geom_boxplot() +
+  labs(x = '') +
+  ggtitle('Boxplots of pneumatocyst diameters') +
+  theme(axis.text.x = element_text(angle = 70, vjust = 1, hjust = 1), legend.position = 'none')
+```
+
+```{r pneumatocyst histograms, include = FALSE}
+# Pneumatocyst size histograms at each site.
+
+ggplot(fresh2[which(fresh2$site == 'Fort Ross Cove'),], aes(x = `bulb_diam (mm)`, fill = holdfast)) +
+   geom_histogram(color = 'black', binwidth = 5) +
+   scale_y_continuous(expand = c(0,0)) +
+   scale_x_continuous(breaks = seq(0,90,5)) +
+   ggtitle('Histogram of pneumatocyst diameters at Fort Ross Cove')
+
+ggplot(fresh2[which(fresh2$site == 'Timber Cove'),], aes(x = `bulb_diam (mm)`, fill = holdfast)) +
+   geom_histogram(color = 'black', binwidth = 5) +
+   scale_y_continuous(expand = c(0,0)) +
+   scale_x_continuous(breaks = seq(0,70,5)) +
+   ggtitle('Histogram of pneumatocyst diameters at Timber Cove')
+
+ggplot(fresh2[which(fresh2$site == 'Agate Beach'),], aes(x = `bulb_diam (mm)`, fill = holdfast)) +
+   geom_histogram(color = 'black') +
+   scale_y_continuous(expand = c(0,0)) +
+   # scale_x_continuous(breaks = seq(0,70,5)) +
+   ggtitle('Histogram of pneumatocyst diameters at Agate Beach')
+  
+```
+
+```{r dry wrack analysis}
+# probably should find the average wrack of the three transects per site per sample date.
+# clean up formatting
+dry2 <- dry %>% 
+  dplyr::mutate(date = mdy(date)) %>% 
+  dplyr::mutate(meter = as.numeric(meter)) %>% # format dates and meters
+  dplyr::select(!c(total, notes, observers)) # remove total, notes, observers cols
+
+# Make species a col
+dry_long <- dry2 %>% 
+  pivot_longer(cols = c(red_algae:trash), names_to = 'species', values_to = 'percent') %>% 
+  dplyr::mutate(percent = (ifelse(is.na(percent), 0, percent))) # make NAs zero for percent. I don't believe it adds zeros after the last nonzero value. So if a transect was 30 m long but the last 3 m had no data entered, it would assume the transect was only 27 m long.
+
+# # Check transect lengths. This is a HUGE table; do not print it.
+# dry_long %>% 
+#   group_by(date, site, transect_number) %>%
+#   dplyr::summarise(max_meter = max(meter), n = n()) 
+
+# Take average dry wrack across three transects for each species at each site and date
+dry_sum <- dry_long %>% 
+  dplyr::group_by(site, date, species, transect_number) %>%
+  dplyr::summarise(mean_perc_trans = mean(percent), sd_perc_trans = sd(percent), n_perc_trans = n()) %>% # mean percent cover per species per transect
+  dplyr::group_by(site, date, species) %>%
+  dplyr::summarize(mean_perc_beach = mean(mean_perc_trans), sd_perc_beach = sd(mean_perc_trans), n_perc_beach = n()) %>% # mean percent cover per species per beach
+  dplyr::mutate(se_perc_beach = sd_perc_beach / n_perc_beach)
+  
+# line graph with each type of wrack as a line, percent cover on the y, and date on the x
+
+big.dodge = 9
+## Timber Cove
+ggplot(dry_sum[which(dry_sum$site == 'Timber' & dry_sum$mean_perc_beach > 1),], aes(x = date, y = mean_perc_beach, color = species)) +
+  geom_errorbar(aes(ymin = mean_perc_beach - se_perc_beach, ymax = mean_perc_beach + se_perc_beach), width = 0, position = position_dodge(big.dodge)) +
+  geom_line(position = position_dodge(big.dodge)) +
+  geom_point(size = 3, position = position_dodge(big.dodge)) +
+  scale_color_manual(values = c('tan3', 'dodgerblue3', 'red3', 'green4', 'chocolate4', 'grey30', 'mediumpurple')) +
+  labs(y = 'Mean percent cover') +
+  ggtitle('Timber Cove dry wrack') +
+  scale_x_date(date_labels = "%Y %b %d", breaks = '1 month') +
+  theme(axis.text.x = element_text(angle = 40, vjust = 1, hjust = 1))
+
+## Fort Ross Cove
+ggplot(dry_sum[which(dry_sum$site == 'Fort Ross' & dry_sum$mean_perc_beach > 1),], aes(x = date, y = mean_perc_beach, color = species)) +
+  geom_errorbar(aes(ymin = mean_perc_beach - se_perc_beach, ymax = mean_perc_beach + se_perc_beach), width = 0, position = position_dodge(big.dodge)) +
+  geom_line(position = position_dodge(big.dodge)) +
+  geom_point(size = 3, position = position_dodge(big.dodge)) + 
+  scale_color_manual(values = c('tan3', 'chartreuse', 'dodgerblue3', 'red3', 'green4', 'chocolate4')) +
+  labs(y = 'Mean percent cover') +
+  ggtitle('Fort Ross Cove dry wrack') +
+  scale_x_date(date_labels = "%Y %b %d", breaks = '1 month') +
+  theme(axis.text.x = element_text(angle = 40, vjust = 1, hjust = 1))
+
+## Ocean Cove
+ggplot(dry_sum[which(dry_sum$site == 'Ocean' & dry_sum$mean_perc_beach > 1),], aes(x = date, y = mean_perc_beach, color = species)) +
+  geom_errorbar(aes(ymin = mean_perc_beach - se_perc_beach, ymax = mean_perc_beach + se_perc_beach), width = 0) +
+  geom_line() +
+  geom_point(size = 3) +
+  scale_color_manual(values = c('tan3', 'chartreuse4', 'red3')) +
+  labs(y = 'Mean percent cover') +
+  ggtitle('Ocean Cove dry wrack') +
+  scale_x_date(date_labels = "%Y %b %d", breaks = '1 day')
+
+## Agate Beach
+ggplot(dry_sum[which(dry_sum$site == 'Agate' & dry_sum$mean_perc_beach > 1),], aes(x = date, y = mean_perc_beach, color = species)) +
+  geom_errorbar(aes(ymin = mean_perc_beach - se_perc_beach, ymax = mean_perc_beach + se_perc_beach), width = 0) +
+  geom_line() +
+  geom_point(size = 3) +
+  scale_color_manual(values = c('tan3', 'dodgerblue','red3')) +
+  labs(y = 'Mean percent cover') +
+  ggtitle('Agate Beach dry wrack') +
+  scale_x_date(date_labels = '%Y %b %d', breaks = c(ymd('2024-01-17'), ymd('2024-02-15'), ymd('2024-03-29'))) +
+  theme(axis.text.x = element_text(angle = 50, vjust = 1, hjust = 1))  
+```
+Dry wrack line graphs were created by averaging the percent cover (measured in 1/4 m x 1/4 m quadrats) of each species per transect (n = 0 to 84), then averaging that average per transect (n = 3) for each beach. The graphs only include species of dry wrack that exceeded 1% average average cover. Error bars are standard error.
+
+```{r dry wrack totals per beach}
+dry_long %>% 
+  filter(!is.na(site)) %>% 
+  dplyr::group_by(date, site, transect_number) %>% 
+  dplyr::summarise(wrack_sum = sum(percent), n = n()) %>% 
+  dplyr::group_by(date, site) %>% 
+  dplyr::summarise(mean_wrack_sum = mean(wrack_sum), sd_wrack_sum = sd(wrack_sum), n_wrack_sum = n()) %>% 
+  ggplot(aes(x = date, y = mean_wrack_sum, color = site)) +
+  geom_errorbar(aes(ymin = mean_wrack_sum - sd_wrack_sum, ymax = mean_wrack_sum + sd_wrack_sum)) +
+  geom_point(size = 3) +
+  geom_line() +
+  scale_x_date(date_labels = "%Y %b", breaks = '1 month') +
+  labs(y = 'Mean total wrack %') +
+  ggtitle('Beach catchability: mean total wrack over time') +
+  theme(axis.text.x = element_text(angle = 40, vjust = 1, hjust = 1))
+```
+Mean total wrack percent was calculated as the average of three transects of the sum of wrack percentages in all the 0.25^2^ m quadrats in the transect. For example, in transect 1, all percent covers in the 0.25^2^ m quadrats for all species were added. This was done for each of the three transects at the site. Finally, I calculated the mean of those three numbers. I repeated this for each sampling event. Error bars are SD.
+
+```{r dead urchin counts}
+# Make two tibbles, one with animal ID and one with animal counts, then combine
+
+## Animal ID
+dead_animal_ID <- beach %>% 
+  dplyr::select(site, date, dead_animal_1, dead_animal_2, dead_animal_3, dead_animal_4) %>% # only these columns
+  pivot_longer(cols = c(dead_animal_1:dead_animal_4), names_to = 'key', values_to = 'ID') %>%
+  dplyr::mutate(key = str_remove_all(key, "[dead_animal_]"))
+                
+## Animal counts
+dead_animal_count <- beach %>% 
+  dplyr::select(site, date, dead_animal_1_count, dead_animal_2_count, dead_animal_3_count, dead_animal_4_count) %>% # only these columns
+  dplyr::mutate(dead_animal_4_count = as.character(dead_animal_4_count)) %>% #must be character for the pivot_longer to work
+  pivot_longer(cols = c(dead_animal_1_count:dead_animal_4_count), names_to = 'key', values_to = 'count') %>%
+  dplyr::mutate(count = as.numeric(count)) %>% 
+  dplyr::mutate(key = str_remove_all(key, "[dead_animal__count]"))
+  
+
+# Combine species and counts
+dead_animal_sum <- left_join(dead_animal_ID, dead_animal_count) %>% 
+  dplyr::select(!key) %>% 
+  dplyr::mutate(date = mdy(date)) %>% 
+  dplyr::select(site, date, ID, count) %>% 
+  dplyr::filter(!ID == 'na') # remove rows that say "na" # this will be useful when I need to analyze all the species
+
+dead_animal_sum %>% 
+  dplyr::filter(ID == 'purple urchin') %>% # only rows with purple urchin
+  ggplot(aes(x = date, y = count, color = site)) +
+  geom_point(size = 4) +
+  geom_line() +
+  labs(x = '') +
+  ggtitle('Purple sea urchin counts') +
+  scale_color_manual(values = c('orchid', 'darkorchid')) +
+  scale_x_date(date_labels = "%Y %b %d", breaks = '1 month') +
+  theme(axis.text.x = element_text(angle = 40, vjust = 1, hjust = 1))
+```
+
+```{r holdfasts only, eval = T, include = FALSE}
+# How large were the pneumatocysts on individuals with a holdfast?
+
+# Total number of individuals with a holdfast: 
+# nrow(fresh[which(fresh$holdfast == T),]) # 26
+
+holdfast_only <- fresh %>%
+  filter(holdfast == T) %>%
+  dplyr::mutate(adult = 
+                  ifelse(stage == "A", 1, 0)) # change A values to 1 and J values to 0
+
+ggplot(holdfast_only, aes(x = `bulb_diam (mm)`, fill = sori)) +
+   geom_histogram(color = 'black', binwidth = 5) +
+   scale_y_continuous(expand = c(0,0)) +
+   scale_x_continuous(breaks = seq(0,90,5)) +
+   ggtitle('Histogram of pneumatocyst diameters with holdfasts')
+
+# plot stage on y axis, bulb diam on x axis, make logistic curve
+## first need to change ordering of J and A
+ggplot(holdfast_only, aes(x = `bulb_diam (mm)`, y = adult)) +
+  geom_point() +
+  scale_x_continuous(breaks = c(seq(5,90,5))) +
+  stat_smooth(method = 'glm', se = F, method.args = list(family = binomial)) +
+  ggtitle('Logistic regression of lifestage vs. pneumatocyst diameter') +
+  geom_hline(aes(yintercept = 0.5), linetype = 'dashed') +
+  geom_vline(aes(xintercept = 38.4), linetype = 'dashed') +
+  annotate('text', y = .1, x = 70, label = 'n = 26 individuals with holdfasts') +
+  annotate('text', y = .48, x = 47, label = 'bulb_diam = 38.4') 
+
+# logistic regression of stage vs. pneumatocyst diameter
+logistic_model <- glm(adult ~ `bulb_diam (mm)`, data = holdfast_only, family = binomial)
+```
+
+```{r table 1 logistic summary with holdfasts only, include = FALSE}
+# Table 1. Logistic regression of life stage vs. bulb diameter
+
+logistic_model |> # this is the model summary
+  tidy() |> # This makes the model summary into a data frame. It is from the broom package.
+  mutate(term = c('Intercept', 'Bulb diameter (mm)')) |> # rename variables so they look nicer in a table.
+  flextable() |> # this makes the data frame into a presentable, formatted table
+  colformat_double(digits = 3) |> # limits numeric digits
+  labelizor(part = "header", labels = c("term" = "Term", "estimate" = "Estimate", "std.error" = "Standard error", "statistic" = "Statistic", "p.value"= "P-value")) |> #change col names
+  bold(part = 'header')
+
+```
+
+```{r sori analyses, include = FALSE}
+ fresh3 <- fresh2 %>%
+   dplyr::mutate(sori_presence = 
+        ifelse(sori == "TRUE", 1, 0)) # create new "sori_presence" col where = 1 if sori are present, otherwise 0
+
+#### Sori only ####
+# currently there are no observations of sori, but I'm saving this for when there are.
+sori_only <- fresh3 %>%
+  filter(sori == T)
+ 
+ggplot(sori_only, aes(x = `bulb_diam (mm)`)) +
+   geom_histogram(color = 'black', fill = 'seagreen', binwidth = 5) +
+   scale_y_continuous(expand = c(0,0)) +
+   scale_x_continuous(breaks = seq(0,90,5)) +
+   ggtitle('Histogram of pneumatocyst diameters with sori only (n = 0)')
+
+# # plot stage on y axis, bulb diam on x axis, make logistic curve
+# ggplot(fresh, aes(x = `bulb_diam (mm)`, y = sori_presence)) +
+#   geom_point() +
+#   #scale_x_continuous(breaks = c(seq(5,90,5))) +
+#   stat_smooth(method = 'glm', se = F, method.args = list(family = binomial)) +
+#   ggtitle('Logistic regression of sori presence vs. pneumatocyst diameter') +
+#   geom_hline(aes(yintercept = 0.5), linetype = 'dashed') 
+#   #geom_vline(aes(xintercept = 38.4), linetype = 'dashed') +
+#   #annotate('text', y = .1, x = 70, label = 'n = 26 individuals with holdfasts') +
+#   #annotate('text', y = .48, x = 47, label = 'bulb_diam = 38.4')
+```
+
+```{r table 2 logistic regression with sori only, include = F}
+# Table 2. Logistic regression of sorus presence vs. pneumatocyst diameter.
+
+# CURRENTLY THERE ARE NO OBSERVATIONS OF SORI.
+
+# logistic regression and curve of sori presence vs pneumatocyst size!
+
+# sori_logistic <- glm(sori_presence ~ `bulb_diam (mm)`, data = fresh, family = binomial)
+# 
+# sori_logistic |>
+#    tidy() |> # This makes the model summary into a data frame. It is from the broom package.
+#   mutate(term = c('Intercept', 'Bulb diameter (mm)')) |> # rename variables so they look nicer in a table.
+#   flextable() |> # this makes the data frame into a presentable, formatted table
+#   colformat_double(digits = 3) |> # limits numeric digits
+#   labelizor(part = "header", labels = c("term" = "Term", "estimate" = "Estimate", "std.error" = "Standard error", "statistic" = "Statistic", "p.value"= "P-value")) |> #change col names
+#   bold(part = 'header')
+
+```
+
+These analyses were done using RMarkdown in RStudio v. 2023.09.01 using R v. `r paste(version$major, version$minor, sep = '.')`.

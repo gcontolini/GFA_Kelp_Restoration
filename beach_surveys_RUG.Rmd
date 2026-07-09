@@ -1,0 +1,137 @@
+---
+title: "Beach Surveys for RUG"
+subtitle: "by Gina Contolini. Gina.Contolini@noaa.gov"
+author: "Greater Farallones Association and Greater Farallones and Cordell Bank National Marine Sanctuaries"
+date: "Updpated on `r Sys.Date()`"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE, echo = FALSE, message = FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+# the shortcut for pipe is ctrl+shift+M
+
+#### Install and load packages ####
+library(tidyverse) # all tidyverse packages including tidyr, dplyr, lubridate, and ggplot2
+library(flextable) # to make nice tables
+
+#### Create plot theme ####
+theme_set(theme( 
+   panel.background = element_blank(), # remove panel background
+   # panel.grid.minor.x = element_blank(), # remove minor x axis grid line
+   # panel.grid.major.x = element_blank(), # remove major x axis grid line
+   panel.grid = element_blank(), # remove all grid lines
+   axis.text = element_text(size = 13,color = 'black'), #makes axis labels bigger
+   axis.title = element_text(size = 15), #makes axis title bigger and bold
+   legend.title = element_text(size = 16),
+   legend.text = element_text(size = 16),
+   legend.background = element_blank(),
+   panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.5), # border around the whole plot
+   plot.title = element_text(size = 15),
+   legend.key = element_blank()
+))
+```
+
+```{r load in data}
+beach <- read_csv('Beach survey data - Beach Data.csv') #last downloaded 18 March 2024
+fresh <- read_csv('Beach survey data - Fresh Nereo Data.csv') #last downloaded 18 March 2024
+```
+
+```{r beach characteristics}
+# How did beach area change over time?
+beach2 <- beach %>%
+  dplyr::select(date, site, length_m, width_trans_1_m, width_trans_2_m, width_trans_3_m) %>% 
+  dplyr::mutate(across(width_trans_1_m:width_trans_3_m, as.numeric)) %>% # performs the same change to multiple selected columns
+  dplyr::mutate(date = mdy(date)) %>% # format dates
+
+# Find beach area by averaging the three width transects and then multiplying by lengths
+  pivot_longer(c(width_trans_1_m, width_trans_2_m, width_trans_3_m), names_to = 'width_reps', values_to = 'width_m') %>% # reformat so all width measurements are in one column
+  dplyr::group_by(site, date, length_m) %>%
+  dplyr::summarise(mean_width_m = mean(width_m), sd_width = sd(width_m), n_width = n()) %>% # calculate mean, sd, and n
+  dplyr::mutate(beach_area_m2 = mean_width_m * length_m) %>% 
+  dplyr::filter(!is.na(beach_area_m2)) # remove NA values to make all dots connect
+  
+# Beach area over time. y is area, x is time, color is beach.
+ggplot(beach2, aes(x = date, y = beach_area_m2, color = site)) +
+  geom_point(size = 4, position = position_dodge(5)) +
+  geom_line(position = position_dodge(5)) +
+  labs(y = bquote(paste('Mean area (',~m^2, ')'))) + # this was so hard to figure out SAVE IT!!!
+  scale_x_date(date_labels = "%Y %b %d", breaks = '1 month') +
+  theme(axis.text.x = element_text(angle = 40, vjust = 1, hjust = 1)) +
+  ggtitle('Beach areas over time')
+
+# make a nice table.
+beach2 %>% 
+  dplyr::select(!n_width) %>% 
+  dplyr::mutate(across(mean_width_m:beach_area_m2, round, digits = 2)) %>% # performs the same change to multiple selected columns
+  flextable() %>% 
+  set_caption('Beach areas 2023–2024')
+
+```
+Beach area was calculated by multiplying the beach length by the average of three beach widths.
+
+```{r fresh nereo counts}
+# How many bull kelps did we find at each site over time? 
+## Make this plot here! Hint: steal code from above and change what you need.
+
+```
+
+```{r dead urchin counts}
+# Make two tibbles, one with animal ID and one with animal counts, then combine.
+
+## Animal ID
+dead_animal_ID <- beach %>% 
+  dplyr::select(site, date, dead_animal_1, dead_animal_2, dead_animal_3, dead_animal_4) %>% # only these columns
+  pivot_longer(cols = c(dead_animal_1:dead_animal_4), names_to = 'key', values_to = 'ID') %>%
+  dplyr::mutate(key = str_remove_all(key, "[dead_animal_]")) # remove this text from all rows in the column
+                
+## Animal counts
+dead_animal_count <- beach %>% 
+  dplyr::select(site, date, dead_animal_1_count, dead_animal_2_count, dead_animal_3_count, dead_animal_4_count) %>% # only these columns
+  dplyr::mutate(dead_animal_4_count = as.character(dead_animal_4_count)) %>% #must be character for the pivot_longer to work
+  pivot_longer(cols = c(dead_animal_1_count:dead_animal_4_count), names_to = 'key', values_to = 'count') %>%
+  dplyr::mutate(count = as.numeric(count)) %>% 
+  dplyr::mutate(key = str_remove_all(key, "[dead_animal__count]")) # remove this text from all rows in the column
+  
+# Combine species and counts
+dead_animal_sum <- left_join(dead_animal_ID, dead_animal_count) %>% # sum stands for summary
+  dplyr::select(!key) %>% 
+  dplyr::mutate(date = mdy(date)) %>% 
+  dplyr::filter(!ID == 'na') # remove rows that say "na" # this will be useful when I need to analyze all the species
+
+# Make the line graph
+dead_animal_sum %>% 
+  dplyr::filter(ID == 'purple urchin') %>% # only rows with purple urchin
+  ggplot(aes(x = date, y = count, color = site)) +
+  geom_point(size = 4) +
+  geom_line() +
+  labs(x = '') +
+  ggtitle('Purple sea urchin counts') +
+  scale_color_manual(values = c('orchid', 'darkorchid')) +
+  scale_x_date(date_labels = "%Y %b %d", breaks = '1 month') +
+  theme(axis.text.x = element_text(angle = 40, vjust = 1, hjust = 1))
+
+dead_animal_sum %>% 
+  dplyr::filter(ID == 'purple urchin') %>% 
+  dplyr::select(!ID) %>% 
+  flextable() %>% 
+  set_caption('Purple urchin counts')
+```
+
+```{r pneumatocyst sizes}
+# What sizes of bull kelps were found at each site over time?
+fresh %>% 
+  dplyr::mutate(date = mdy(date)) %>% 
+  ggplot(aes(x = paste(date, site), y = `bulb_diam (mm)`, color = site)) +
+  geom_point( position = position_dodge()) +
+  geom_boxplot() +
+  labs(x = '') +
+  theme(axis.text.x = element_text(angle = 70, vjust = 1, hjust = 1))
+
+```
+These analyses were done using RMarkdown in RStudio v. 2023.09.01 using R v. `r paste(version$major, version$minor, sep = '.')`.

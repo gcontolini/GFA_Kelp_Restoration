@@ -1,0 +1,106 @@
+---
+title: "Reef Check California HOBO loggers"
+subtitle: "By Gina Contolini. Greater Farallones Association, NOAA Affiliate"
+author: "Greater Farallones and Cordell Bank National Marine Sanctuaries"
+date: "Updated on `r Sys.Date()`"
+header-includes:
+- \usepackage{float}
+- \floatplacement{figure}{H}
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(tidyverse)
+
+theme_set(theme( 
+   panel.background = element_rect(fill = 'transparent', color = NA_character_), # transparent panel background
+   plot.background = element_rect(fill = 'transparent', color = NA_character_), #transparent plot bkgd
+   panel.grid = element_line(color = 'transparent'), # remove all grid lines
+   panel.border = element_blank(),
+   axis.text = element_text(size = 13,color = 'black'), # makes axis labels bigger
+   axis.title = element_text(size = 15), #makes axis title bigger and bold
+   # axis.ticks.x = element_blank(),
+   # axis.title.y = element_text(margin=margin(0,10,0,5)), # pushes the y axis title away from the y axis labels
+   # axis.text.x = element_text(margin=margin(0,0,20,0)), #pushes the x axis title away from the x axis labels and pushes the bars down closer to the x axis labels
+   legend.title = element_text(size = 16),
+   legend.text = element_text(size = 16),
+   legend.background = element_rect(fill = 'transparent', color = NA_character_),
+   axis.line = element_line(color = 'black'),
+   plot.title = element_text(size = 15),
+   legend.key = element_blank(), # removes box around legend key
+   axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)
+))
+
+```
+
+```{r load and format data, include = FALSE}
+
+# remove dates beyond deployments. 
+
+rcca_2017 <- read_csv("SWS_2017_09_Hobo.csv") %>% # has over 50,000 observations
+  mutate(datetime = mdy_hm(`Date Time, GMT-07:00`, tz = 'America/Los_Angeles')) %>% # 8 failed to parse
+  filter(datetime > ymd_hm('2017-09-17 16:00', tz = 'America/Los_Angeles') & datetime < ymd_hm('2017-08-02 12:25', tz = 'America/Los_Angeles'))
+
+rcca_2018_1 <- read_csv("SWS_2018_04_Hobo.csv") %>% # has only about 5,000 observations
+  mutate(datetime = mdy_hm(`Date Time, GMT-07:00`, tz = 'America/Los_Angeles')) %>% 
+  filter(datetime > ymd_hm('2018-04-18 15:02', tz = 'America/Los_Angeles') & datetime < ymd_hm('2018-09-14 16:55', tz = 'America/Los_Angeles'))
+
+rcca_2018_2 <- read_csv("SWS_2018_09_Hobo.csv") %>% # note 2019 data was lost
+  mutate(datetime = mdy_hm(`Date Time, GMT-07:00`, tz = 'America/Los_Angeles')) %>% # 6 failed to parse
+  filter(datetime > ymd_hm('2018-09-14 16:55', tz = 'America/Los_Angeles') & datetime < ymd_hm('2019-08-02 12:25', tz = 'America/Los_Angeles'))
+
+rcca_2020 <- read_csv("SWS_2020_10_Hobo.csv") %>% 
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`, tz = 'UTC')) %>% 
+  filter(datetime > ymd_hm('2020-10-09 10:12', tz = 'America/Los_Angeles') & datetime < ymd_hm('2021-08-14 10:30', tz = 'America/Los_Angeles'))
+
+rcca_2021 <- read_csv("SWS_2021_08_Hobo.csv") %>% 
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`, tz = 'UTC')) %>% 
+  filter(datetime > ymd_hm('2021-08-14 10:30', tz = 'America/Los_Angeles') & datetime < ymd_hm('2022-08-21 10:00', tz = 'America/Los_Angeles'))
+
+rcca_2022 <- read_csv("SWS_2022_08_Hobo.csv") %>% 
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`, tz = 'UTC')) %>% 
+  filter(datetime > ymd_hm('2022-08-21 11:30', tz = 'America/Los_Angeles') & datetime < ymd_hm('2023-08-19 10:38', tz = 'America/Los_Angeles'))
+
+rcca_2023 <-  read_csv("SWS_2023_08_Hobo.csv") %>% 
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`, tz = 'UTC')) %>% 
+  filter(datetime > ymd_hm('2023-08-19 10:38', tz = 'America/Los_Angeles') & datetime < ymd_hm('2024-09-22 11:30', tz = 'America/Los_Angeles'))
+
+rcca_hobo <- bind_rows(rcca_2017, rcca_2018_1, rcca_2018_2, rcca_2020, rcca_2021, rcca_2022, rcca_2023) %>% 
+  mutate(year = year(datetime)) %>% 
+  mutate(month = month(datetime)) %>% 
+  mutate(day = day(datetime))
+
+glimpse(rcca_hobo)
+tz(rcca_hobo$datetime) # it says the timezone is LA. So did it automatically change the GMT time from the 2020 data? Check the first 6 rows of the original 2020 data and compare to the first six rows of the combined data from 2020.
+head(rcca_2020) # starts at 1600 on aug 26.
+head(rcca_hobo[which(rcca_hobo$year == 2020),]) # starts at 0900 on aug 26. that's 7 hours behind. ok coooooool it seems like it automatically changes the times to the same timezone with the rowbind!!
+
+```
+
+```{r plot raw data to check it for outliers, include = FALSE}
+ggplot(rcca_hobo, aes(x = datetime, y = temp_C)) +
+  geom_point(color = 'coral') +
+  scale_x_datetime(breaks = '6 months')
+
+```
+
+```{r plot daily means}
+rcca_hobo_mean_daily <- rcca_hobo %>% 
+  group_by(year, month, day) %>% 
+  summarise(mean_daily_temp = mean(temp_C, na.rm = T), sd_daily_temp = sd(temp_C), min_daily_temp = min(temp_C), max_daily_temp = max(temp_C), n = n()) %>% 
+  mutate(date = ymd(paste(year, month, day, sep = '-')))
+
+ggplot(rcca_hobo_mean_daily, aes(x = date, y = mean_daily_temp)) +
+  geom_errorbar(aes(ymin = mean_daily_temp - sd_daily_temp, ymax = mean_daily_temp + sd_daily_temp, width = 0), color = 'grey50') +
+  geom_point() +
+  scale_x_datetime(breaks = '4 months') +
+  scale_y_continuous(limits = c(7.7, 17), breaks = seq(8, 17, 1))
+
+rcca_hobo_mean_daily %>% 
+  ungroup() %>% 
+  summarise(mean_mean_daily = mean(mean_daily_temp))
+```
+

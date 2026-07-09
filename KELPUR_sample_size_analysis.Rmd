@@ -1,0 +1,469 @@
+---
+title: "KELPUR Sample Size Analysis"
+subtitle: "By Gina Contolini. Greater Farallones Association, NOAA Affiliate"
+author: "Greater Farallones and Cordell Bank National Marine Sanctuaries"
+date: "Updated on `r Sys.Date()`"
+header-includes:
+- \usepackage{pdflscape}
+- \newcommand{\blandscape}{\begin{landscape}}
+- \newcommand{\elandscape}{\end{landscape}}
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(flextable)
+library(car)
+library(vegan) # for rarefaction
+
+# # set ggplot theme
+# theme_set(theme(
+#    panel.background = element_rect(fill = 'transparent', color = NA_character_), # transparent panel background
+#    plot.background = element_rect(fill = 'transparent', color = NA_character_), #transparent plot bkgd
+#    panel.grid = element_line(color = 'transparent'), # remove all grid lines
+#    panel.border = element_blank(),
+#    axis.text = element_text(size = 15,color = 'black'), # makes axis labels bigger
+#    axis.title = element_text(size = 20), #makes axis title bigger and bold
+#    axis.ticks.x = element_blank(),
+#    # axis.title.y = element_text(margin=margin(0,10,0,5)), # pushes the y axis title away from the y axis labels
+#    # axis.text.x = element_text(margin=margin(0,0,20,0)), #pushes the x axis title away from the x axis labels and pushes the bars down closer to the x axis labels
+#    legend.title = element_text(size = 20),
+#    legend.text = element_text(size = 18),
+#    legend.background = element_rect(fill = 'transparent', color = NA_character_),
+#    axis.line = element_line(color = 'black'),
+#    plot.title = element_text(size = 20),
+#    legend.key = element_rect(fill = 'transparent'),
+#    strip.text.x = element_text(size = 20)
+#    # panel.grid.minor.x = element_blank(), # remove minor x axis grid line
+#    # panel.grid.major.x = element_blank(), # remove major x axis grid line
+# ))
+```
+
+```{r load and format data, include = FALSE}
+kelpur <- read_csv('GFNMS Swath and KELPUR data entry (all years) - load_to_R.csv') %>% # loaded 2025-02-07
+  dplyr::filter(survey_type == 'kelpUr') %>% 
+  dplyr::mutate(site = replace(site, site == 'timber', 'Timber')) %>% 
+  dplyr::mutate(site = replace(site, site == 'fort_ross', 'Fort Ross')) %>%   
+  dplyr::mutate(site = replace(site, site == 'shell_beach', 'Shell Beach')) %>% 
+  dplyr::mutate(site = replace(site, site == 'ocean', 'Ocean')) %>% 
+  dplyr::mutate(site = replace(site, site == 'gerstle', 'Gerstle')) %>% 
+  # dplyr::mutate(heading = as.character(heading)) %>% # for joins later
+  dplyr::mutate(year = as.factor(year)) # so it doesn't write the years with commas after the thousands
+```
+
+```{r explore data and check for errors, include = FALSE}
+# check for completeness
+# total number of surveys done.
+# how many unique combinations of certain column values
+n_surveys <- n_distinct(
+           kelpur$year, 
+           kelpur$month, 
+           kelpur$day, 
+           kelpur$site, 
+           kelpur$subsite, 
+           kelpur$zone, 
+           kelpur$region, 
+           kelpur$observer,
+           kelpur$transect, 
+           kelpur$transect_ID) # 49 surveys.
+
+length(unique(kelpur$transect_ID)) #49. yay they match!
+```
+
+```{r summary tables}
+kelpur %>% 
+  dplyr::count(year, month, day, site, subsite, zone, region, observer, transect) %>%  # n shows how many rows we entered for each individual transect. This is only useful because now all the rows with the same metadata are represented by one row. I don't actually care about how many rows were entered.
+  dplyr::count(year, month, day, site) %>% 
+  flextable() %>% 
+  set_caption("Number of surveys done per day per site")
+
+kelpur %>% 
+  dplyr::count(year, month, day, site, subsite, zone, region, observer, transect) %>%  # groups each survey in one row
+  dplyr::count(year, site) %>% 
+  flextable() %>% 
+  set_caption("Number of surveys done per year per site")
+```
+As of 2025-02-19, we have conducted `r n_surveys` KELPUR surveys.
+
+```{r check for incomplete surveys, include = FALSE}
+# calculate density in each 30 m transect
+## This is a bit tricky because there are a few transects missing a segment, which means their total area is different.
+
+## First I'm just going to try to identify which surveys have missing segments and also how much of them was actually sampled.
+kelpur %>% 
+    dplyr::filter(!segment == 'ALL' & !is.na(count)) %>% # remove ALLs because those aren't the problem.
+    dplyr::count(year, month, day, site, subsite, zone, region, transect, heading, observer, transect_ID, segment) %>% # counts the number of rows per survey and segment. The benefit is now the segments are consolidated per survey. Each row is a different survey.
+    dplyr::count(year, month, day, site, subsite, zone, region, transect, heading, observer, transect_ID) %>% # counts number of segments per survey
+    dplyr::filter(n < 3) # identifies surveys that have under 3 segments, which means the transect was not completed and density needs to be calculated in an area different than 60m2. As of April 2025, there are zero, so I don't need to correct any densities and I can divide extrapolated counts by 60 for all transects.
+
+#### Check for incomplete purple urchin counts since those should always have three segments ####
+kelpur %>% 
+  dplyr::filter(!segment == 'ALL' & !is.na(count)) %>% # remove ALLs and NAs
+  dplyr::filter(classcode == 'STRPUR') %>% # purple urchins only
+  dplyr::count(year, month, day, site, subsite, zone, region, transect, heading, observer, transect_ID) %>% # number of rows per survey and segment. 
+  dplyr::filter(n < 3) # identifies transects that have under 3 segments. As of April 2025, there are zero.
+  
+#### Check for incomplete red urchin counts since those should always have three segments ####
+kelpur %>% 
+  dplyr::filter(!segment == 'ALL' & !is.na(count)) %>% # remove ALLs and NAs
+  dplyr::filter(classcode == 'MESFRA') %>% # purple urchins only
+  dplyr::count(year, month, day, site, subsite, zone, region, transect, heading, observer, transect_ID) %>% # number of rows per survey and segment. 
+  dplyr::filter(n < 3) # identifies transects that have under 3 segments. As of April 2025, there are zero
+```
+
+```{r calculate density, include = FALSE}
+kelpur_den <- kelpur %>% 
+   dplyr::mutate(den_per_m = (count / (meters_sampled))) %>% # calculate density in the meters that were actually sampled.
+   dplyr::mutate(extrap_count_segment = 
+                   if_else(segment %in% c("0-10m", "10-20m", "20-30m"), den_per_m * 10, den_per_m * 30)) %>% # multiply density by the length of the segment to extrapolate counts where needed so we can add them up later. Needs if_else because not all segments have the same length. 
+   # combine species counts from all available segments per survey:
+   dplyr::group_by(year, month, day, site, subsite, zone, region, transect, heading, observer, transect_ID, classcode) %>% # group by species in each survey, so all segments are together
+   dplyr::summarise(count_sum = sum(extrap_count_segment, na.rm = T), N = n()) %>%  # add up counts in all segments per survey
+   dplyr::mutate(den_m2 = count_sum / 60) # calculate density for the entire 30 x 2 m survey. 
+
+```
+
+# Sample size analysis for purple urchin densities at FRC
+```{r histogram}
+# A rarefaction curve indicates the minimum number of samples needed to see the full diversity of species (or in this case... densities?). 
+# x axis: number of surveys
+# y axis: mean density
+# Will need to group by transect (see code above where I counted how many transects we did)
+# Will need to count different variables. Unique would work if the variables are pivoted to cell values along with count, and 0 counts are removed so only variables with greater than zero recorded remain. Then could use unique() to find unique values within groups.
+
+# no I need it to take the average of surveys after sampling 1, then 2, then 3, etc.
+
+# rarefaction thingy for FRC only.
+kelpur_den_FRC_strpur <- kelpur_den %>% 
+  filter(site == 'Fort Ross' & classcode == 'STRPUR')
+
+# what's the overall mean? our best approximation for the true mean.
+grand_mean <- mean(kelpur_den_FRC_strpur$den_m2) 
+grand_median <- median(kelpur_den_FRC_strpur$den_m2)
+SD1 <- sd(kelpur_den_FRC_strpur$den_m2)
+
+ggplot(kelpur_den_FRC_strpur, aes(x = den_m2)) +
+  geom_histogram() +
+  geom_vline(xintercept = grand_mean) +
+  ggtitle('Histogram of purple urchin densities at FRC')
+ #  geom_vline(xintercept = grand_median, color = 'purple') +
+ #  geom_vline(xintercept = grand_mean + (0.5*SD1), color = 'red') +
+ #  geom_vline(xintercept = grand_mean - (0.5*SD1), color = 'blue') +
+ # geom_vline(xintercept = 2, color = 'green')
+```
+
+```{r boostrap analysis}
+# https://www.youtube.com/watch?v=Zet-qmEEfCU
+B = 99999
+N = nrow(kelpur_den_FRC_strpur)
+boot <- matrix(
+  sample(kelpur_den_FRC_strpur$den_m2, size = B * N, replace = TRUE), ncol = B, nrow = N)
+
+# dim(boot) # 31 x 99999
+# boot[1:5, 1:5]
+
+# Each column is a random resampling with replacement of all the data.
+
+resample_means <- as.data.frame(colMeans(boot)); names(resample_means)[1] = 'mean'
+grand_resample_mean <- mean(resample_means$mean)
+grand_resample_SD <- sd(resample_means$mean)
+lo_CI <- quantile(resample_means$mean, 0.025)
+hi_CI <- quantile(resample_means$mean, 0.975)
+
+# now see when the CIs of other sample sizes don't overlap anymore. That would mean they're statistically different means.
+
+#### Compare to N = 9 ####
+N = 9
+boot <- matrix(
+  sample(kelpur_den_FRC_strpur$den_m2, size = B * N, replace = TRUE), ncol = B, nrow = N)
+# Each column is a random resampling with replacement of all the data N times.
+
+resample_means_2 <- as.data.frame(colMeans(boot)); names(resample_means_2)[1] = 'mean'
+grand_resample_mean_2 <- mean(resample_means_2$mean)
+lo_CI_2 <- quantile(resample_means_2$mean, 0.025)
+hi_CI_2 <- quantile(resample_means_2$mean, 0.975)
+
+ggplot(resample_means, aes(x = mean)) +
+  geom_histogram(fill = 'red', alpha = 0.5) +
+  geom_vline(xintercept = grand_resample_mean) +
+  geom_vline(xintercept = hi_CI, color = 'red') +
+  geom_vline(xintercept = lo_CI, color = 'red') +
+  ggtitle(paste(
+    'Comparing 31 (red) and', N, 'sample bootstraps with 95% CIs', 
+    sep = ' ')) +
+  geom_histogram(data = resample_means_2, aes(x = mean), fill = 'blue', alpha = 0.3) +
+  # geom_vline(xintercept = grand_resample_mean_2, color = 'blue') +
+  geom_vline(xintercept = hi_CI_2, color = 'blue') +
+  geom_vline(xintercept = lo_CI_2, color = 'blue')
+
+ks.test(resample_means$mean, resample_means_2$mean) #default two-sided test
+
+#### Compare to N = 16 ####
+N = 16
+boot <- matrix(
+  sample(kelpur_den_FRC_strpur$den_m2, size = B * N, replace = TRUE), ncol = B, nrow = N)
+
+resample_means_2 <- as.data.frame(colMeans(boot)); names(resample_means_2)[1] = 'mean'
+grand_resample_mean_2 <- mean(resample_means_2$mean)
+lo_CI_2 <- quantile(resample_means_2$mean, 0.025)
+hi_CI_2 <- quantile(resample_means_2$mean, 0.975)
+
+ggplot(resample_means, aes(x = mean)) +
+  geom_histogram(fill = 'red', alpha = 0.5) +
+  geom_vline(xintercept = grand_resample_mean) +
+  geom_vline(xintercept = hi_CI, color = 'red') +
+  geom_vline(xintercept = lo_CI, color = 'red') +
+  ggtitle(paste(
+    'Comparing 31 (red) and', N, 'sample bootstraps with 95% CIs', 
+    sep = ' ')) +
+  geom_histogram(data = resample_means_2, aes(x = mean), fill = 'blue', alpha = 0.3) +
+  # geom_vline(xintercept = grand_resample_mean_2, color = 'blue') +
+  geom_vline(xintercept = hi_CI_2, color = 'blue') +
+  geom_vline(xintercept = lo_CI_2, color = 'blue')
+
+ks.test(resample_means$mean, resample_means_2$mean) #default two-sided test
+
+#### Compare to N = 20 ####
+N = 20
+boot <- matrix(
+  sample(kelpur_den_FRC_strpur$den_m2, size = B * N, replace = TRUE), ncol = B, nrow = N)
+
+resample_means_2 <- as.data.frame(colMeans(boot)); names(resample_means_2)[1] = 'mean'
+grand_resample_mean_2 <- mean(resample_means_2$mean)
+lo_CI_2 <- quantile(resample_means_2$mean, 0.025)
+hi_CI_2 <- quantile(resample_means_2$mean, 0.975)
+
+ggplot(resample_means, aes(x = mean)) +
+  geom_histogram(fill = 'red', alpha = 0.5) +
+  geom_vline(xintercept = grand_resample_mean) +
+  geom_vline(xintercept = hi_CI, color = 'red') +
+  geom_vline(xintercept = lo_CI, color = 'red') +
+  ggtitle(paste(
+    'Comparing 31 (red) and', N, 'sample bootstraps with 95% CIs', 
+    sep = ' ')) +
+  geom_histogram(data = resample_means_2, aes(x = mean), fill = 'blue', alpha = 0.3) +
+  # geom_vline(xintercept = grand_resample_mean_2, color = 'blue') +
+  geom_vline(xintercept = hi_CI_2, color = 'blue') +
+  geom_vline(xintercept = lo_CI_2, color = 'blue')
+
+ks.test(resample_means$mean, resample_means_2$mean) #default two-sided test
+
+#### Compare to N = 27 ####
+N = 27
+boot <- matrix(
+  sample(kelpur_den_FRC_strpur$den_m2, size = B * N, replace = TRUE), ncol = B, nrow = N)
+
+resample_means_2 <- as.data.frame(colMeans(boot)); names(resample_means_2)[1] = 'mean'
+grand_resample_mean_2 <- mean(resample_means_2$mean)
+lo_CI_2 <- quantile(resample_means_2$mean, 0.025)
+hi_CI_2 <- quantile(resample_means_2$mean, 0.975)
+
+ggplot(resample_means, aes(x = mean)) +
+  geom_histogram(fill = 'red', alpha = 0.5) +
+  geom_vline(xintercept = grand_resample_mean) +
+  geom_vline(xintercept = hi_CI, color = 'red') +
+  geom_vline(xintercept = lo_CI, color = 'red') +
+  ggtitle(paste(
+    'Comparing 31 (red) and', N, 'sample bootstraps with 95% CIs', 
+    sep = ' ')) +
+  geom_histogram(data = resample_means_2, aes(x = mean), fill = 'blue', alpha = 0.3) +
+  # geom_vline(xintercept = grand_resample_mean_2, color = 'blue') +
+  geom_vline(xintercept = hi_CI_2, color = 'blue') +
+  geom_vline(xintercept = lo_CI_2, color = 'blue')
+
+# Well they all have overlapping confidence intervals around the mean, so that's not a helpful feature to make a decision. What if I compare distributions using K-S tests? Is it important that they have the same distributions? ...probably?
+
+
+ks.test(resample_means$mean, resample_means_2$mean) #default two-sided test
+
+# Well they all have overlapping confidence intervals around the mean, so that's not a helpful feature to make a decision. What if I compare distributions using K-S tests? Is it important that they have the same distributions? ...probably? No they are have very different distributions according to KS tests.
+
+```
+
+```{r moving means, include = TRUE}
+# Make 10 different graphs to compare the rarefactions.
+# for(j in 1:10){
+  
+  kelpur_FRC_strpur_sample_means <- data.frame(
+    n_surveys = 1:nrow(kelpur_den_FRC_strpur), mean_den = NA)
+  
+  # populate the dataframe with sample means from 1 sample to 31 samples at FRC
+  for(i in 1:nrow(kelpur_FRC_strpur_sample_means)){
+    den_sam <- sample(kelpur_den_FRC_strpur$den_m2, i)
+    kelpur_FRC_strpur_sample_means$mean_den[i] = mean(den_sam)
+  }
+  
+  ggplot(kelpur_FRC_strpur_sample_means, aes(x = n_surveys, y = mean_den)) +
+    geom_point() +
+    geom_line() +
+    geom_hline(yintercept = grand_mean, color = 'purple') +
+    ggtitle('Fort Ross mean purple urchin densities in KELPUR surveys vs. sample size')
+
+# } for when I eventually figure out how to automatically repeat the pot 10 times.
+  
+#### Plot 2 ####
+for(i in 1:nrow(kelpur_FRC_strpur_sample_means)){
+    den_sam <- sample(kelpur_den_FRC_strpur$den_m2, i)
+    kelpur_FRC_strpur_sample_means$mean_den[i] = mean(den_sam)
+  }
+  
+ggplot(kelpur_FRC_strpur_sample_means, aes(x = n_surveys, y = mean_den)) +
+    geom_point() +
+    geom_line() +
+    geom_hline(yintercept = grand_mean, color = 'purple') +
+    ggtitle('Fort Ross mean purple urchin densities in KELPUR surveys vs. sample size')
+
+#### Plot 3 ####
+for(i in 1:nrow(kelpur_FRC_strpur_sample_means)){
+    den_sam <- sample(kelpur_den_FRC_strpur$den_m2, i)
+    kelpur_FRC_strpur_sample_means$mean_den[i] = mean(den_sam)
+  }
+  
+ggplot(kelpur_FRC_strpur_sample_means, aes(x = n_surveys, y = mean_den)) +
+    geom_point() +
+    geom_line() +
+    geom_hline(yintercept = grand_mean, color = 'purple') +
+    ggtitle('Fort Ross mean purple urchin densities in KELPUR surveys vs. sample size')
+
+#### Plot 4 ####
+for(i in 1:nrow(kelpur_FRC_strpur_sample_means)){
+    den_sam <- sample(kelpur_den_FRC_strpur$den_m2, i)
+    kelpur_FRC_strpur_sample_means$mean_den[i] = mean(den_sam)
+  }
+  
+ggplot(kelpur_FRC_strpur_sample_means, aes(x = n_surveys, y = mean_den)) +
+    geom_point() +
+    geom_line() +
+    geom_hline(yintercept = grand_mean, color = 'purple') +
+    ggtitle('Fort Ross mean purple urchin densities in KELPUR surveys vs. sample size')
+
+#### Plot 5 ####
+for(i in 1:nrow(kelpur_FRC_strpur_sample_means)){
+    den_sam <- sample(kelpur_den_FRC_strpur$den_m2, i)
+    kelpur_FRC_strpur_sample_means$mean_den[i] = mean(den_sam)
+  }
+  
+ggplot(kelpur_FRC_strpur_sample_means, aes(x = n_surveys, y = mean_den)) +
+    geom_point() +
+    geom_line() +
+    geom_hline(yintercept = grand_mean, color = 'purple') +
+    ggtitle('Fort Ross mean purple urchin densities in KELPUR surveys vs. sample size')
+
+#### Plot 6 ####
+for(i in 1:nrow(kelpur_FRC_strpur_sample_means)){
+    den_sam <- sample(kelpur_den_FRC_strpur$den_m2, i)
+    kelpur_FRC_strpur_sample_means$mean_den[i] = mean(den_sam)
+  }
+  
+ggplot(kelpur_FRC_strpur_sample_means, aes(x = n_surveys, y = mean_den)) +
+    geom_point() +
+    geom_line() +
+    geom_hline(yintercept = grand_mean, color = 'purple') +
+    ggtitle('Fort Ross mean purple urchin densities in KELPUR surveys vs. sample size')
+
+#### Plot 7 ####
+for(i in 1:nrow(kelpur_FRC_strpur_sample_means)){
+    den_sam <- sample(kelpur_den_FRC_strpur$den_m2, i)
+    kelpur_FRC_strpur_sample_means$mean_den[i] = mean(den_sam)
+  }
+  
+ggplot(kelpur_FRC_strpur_sample_means, aes(x = n_surveys, y = mean_den)) +
+    geom_point() +
+    geom_line() +
+    geom_hline(yintercept = grand_mean, color = 'purple') +
+    ggtitle('Fort Ross mean purple urchin densities in KELPUR surveys vs. sample size')
+
+#### Plot 8 ####
+for(i in 1:nrow(kelpur_FRC_strpur_sample_means)){
+    den_sam <- sample(kelpur_den_FRC_strpur$den_m2, i)
+    kelpur_FRC_strpur_sample_means$mean_den[i] = mean(den_sam)
+  }
+  
+ggplot(kelpur_FRC_strpur_sample_means, aes(x = n_surveys, y = mean_den)) +
+    geom_point() +
+    geom_line() +
+    geom_hline(yintercept = grand_mean, color = 'purple') +
+    ggtitle('Fort Ross mean purple urchin densities in KELPUR surveys vs. sample size')
+
+#### Plot 9 ####
+for(i in 1:nrow(kelpur_FRC_strpur_sample_means)){
+    den_sam <- sample(kelpur_den_FRC_strpur$den_m2, i)
+    kelpur_FRC_strpur_sample_means$mean_den[i] = mean(den_sam)
+  }
+  
+ggplot(kelpur_FRC_strpur_sample_means, aes(x = n_surveys, y = mean_den)) +
+    geom_point() +
+    geom_line() +
+    geom_hline(yintercept = grand_mean, color = 'purple') +
+    ggtitle('Fort Ross mean purple urchin densities in KELPUR surveys vs. sample size')
+
+#### Plot 10 ####
+for(i in 1:nrow(kelpur_FRC_strpur_sample_means)){
+    den_sam <- sample(kelpur_den_FRC_strpur$den_m2, i)
+    kelpur_FRC_strpur_sample_means$mean_den[i] = mean(den_sam)
+  }
+  
+ggplot(kelpur_FRC_strpur_sample_means, aes(x = n_surveys, y = mean_den)) +
+    geom_point() +
+    geom_line() +
+    geom_hline(yintercept = grand_mean, color = 'purple') +
+    ggtitle('Fort Ross mean purple urchin densities in KELPUR surveys vs. sample size')
+
+#### Plot 11 ####
+for(i in 1:nrow(kelpur_FRC_strpur_sample_means)){
+    den_sam <- sample(kelpur_den_FRC_strpur$den_m2, i)
+    kelpur_FRC_strpur_sample_means$mean_den[i] = mean(den_sam)
+  }
+  
+ggplot(kelpur_FRC_strpur_sample_means, aes(x = n_surveys, y = mean_den)) +
+    geom_point() +
+    geom_line() +
+    geom_hline(yintercept = grand_mean, color = 'purple') +
+    ggtitle('Fort Ross mean purple urchin densities in KELPUR surveys vs. sample size')
+```
+In conclusion, I need to discuss with the team their desired level of precision for urchin density. 
+
+```{r plot densities in choronological order}
+# same as above but in the order in which we collected them. 
+
+# create a numbering row
+kelpur_den_FRC_strpur$rank = seq(1:dim(kelpur_den_FRC_strpur)[1])
+
+ggplot(kelpur_den_FRC_strpur, aes(x = rank, y = den_m2)) +
+  # geom_boxplot()
+  geom_point() +
+  geom_line() +
+  geom_hline(yintercept = grand_mean, color = 'purple') +
+  ggtitle('Fort Ross raw survey densities in chronological order')
+
+# calculate moving average over time
+kelpur_FRC_strpur_sample_means_chron <- data.frame(
+  n_surveys = 1:nrow(kelpur_den_FRC_strpur), mean_den = NA)
+  
+# populate the dataframe with sample means from 1 sample to 31 samples at FRC
+# it doesn't work for i = 1 for some reason, so I just did that one manually
+kelpur_FRC_strpur_sample_means_chron$mean_den[1] = kelpur_den_FRC_strpur$den_m2[1]
+
+for(i in 2:nrow(kelpur_FRC_strpur_sample_means_chron)){
+  #sample 2 from a pool of 2, 3 from a pool of 3, etc.
+    den_sam <- sample(kelpur_den_FRC_strpur$den_m2[1:i], i)
+    kelpur_FRC_strpur_sample_means_chron$mean_den[i] = mean(den_sam)
+}
+
+## testing the loop. It seems to be working.
+# i=7
+# sample(kelpur_den_FRC_strpur$den_m2[1:i], i)
+# mean(sample(kelpur_den_FRC_strpur$den_m2[1:i], i))
+
+ggplot(kelpur_FRC_strpur_sample_means_chron, aes(x = n_surveys, y = mean_den)) +
+    geom_point() +
+    geom_line() +
+    scale_y_continuous(limits = c(5, 18)) +
+    geom_hline(yintercept = grand_mean, color = 'purple') +
+    ggtitle('Fort Ross mean purple urchin densities in KELPUR surveys\nvs. sample size in chronological order')
+
+
+```

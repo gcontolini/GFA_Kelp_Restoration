@@ -1,0 +1,926 @@
+---
+title: "Subtidal Monitoring"
+subtitle: "By Gina Contolini. Gina.Contolini@noaa.gov"
+author: "Greater Farallones Association and Greater Farallones and Cordell Bank National Marine Sanctuaries"
+date: "Updated on `r Sys.Date()`"
+output: 
+  pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE, echo = FALSE, message = FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE,
+	fig.keep = 'all'
+)
+
+# the shortcut for pipe is ctrl+shift+M
+#### Install and load packages ####
+library(car) #companion to applied regression
+library(tidyverse) # all tidyverse packages including tidyr, dplyr, and ggplot2
+library(ggpubr) # plot aesthetics
+library(vegan) # community ecology package
+library(flextable) # tidy display table package
+library(broom) # tidy model output package
+
+#### Create standard error function ####
+se <- function(x){
+   sd(x) / sqrt(length(x))
+}
+
+#### Create plot theme ####
+theme_set(theme( 
+   panel.background = element_blank(), # remove panel background
+   # panel.grid.minor.x = element_blank(), # remove minor x axis grid line
+   # panel.grid.major.x = element_blank(), # remove major x axis grid line
+   panel.grid = element_blank(), # remove all grid lines
+   axis.text = element_text(size = 13,color = 'black'), #makes axis labels bigger
+   axis.title = element_text(size = 15), #makes axis title bigger and bold
+   # axis.ticks = element_blank(),
+   # axis.title.y = element_text(margin=margin(0,10,0,5)), #pushes the y axis title away from the y axis labels
+   # axis.text.x = element_text(margin=margin(0,0,20,0)), #pushes the x axis title away from the x axis labels and pushes the bars down closer to the x axis labels
+   legend.title = element_text(size = 16),
+   legend.text  = element_text(size = 16),
+   legend.background = element_blank(),
+   panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.5), # border around the whole plot
+   plot.title = element_text(size = 15)
+   #legend.key = element_blank()
+))
+```
+
+```{r read in data}
+# urchin_count <- read_csv('URCHIN_survey_data - URCHIN_count_data_entry.csv') 
+abu <- read_csv('2022 AbU data entry sheet - load_to_R.csv') # Abalone and urchin data 2022
+upc <- read_csv('2022 GFNMS UPC data entry system - load_to_R.csv')
+swath <- read_csv('2022 GFNMS SWATH data entry system - DATA.csv') # swath data
+
+# Populate COUNT with 0s for missing classcodes and transects because if we didn't record it, it was not there, and we need the zeros for analyses. Except we didn't actually do one of the frc transects, so hold on.
+## But do we really need zeros for analyses? The dissimilarities should be calculated the same with a 0 or if it's just not listed. Zeros would only be important for math operations like averages.
+
+swath_complete <- swath %>% 
+  dplyr::mutate(DATE = ymd(paste(YEAR, MONTH, DAY))) %>% # make date column
+  dplyr::select(!c(YEAR, MONTH, DAY)) %>% # remove these cols bc we have a formatted date col now
+  tidyr::complete(nesting(SITE, DATE, SUBSITE, REGION, ZONE, TRANSECT, HEADING, DEPTH_m, DEPTH_ft, SEGMENT), CLASSCODE) %>% # I'm not adding new transects here, just classcodes, for each site, subsite, zone, transect, and date combination.
+  tidyr::replace_na(list(COUNT = 0)) # it adds a 0 for all classcodes not listed.
+
+# Extrapolating swath densities
+swath_data <- swath_complete %>%
+   tidyr::replace_na(list(METERS_sampled = 10)) %>% # Replaces all NA values in METERS.sampled with 10. 
+   dplyr::mutate(count.extrapolated = (COUNT / (METERS_sampled))*10) %>% # extrapolate COUNT in the whole 10m segment in new col
+   dplyr::group_by(SITE, DATE, SUBSITE, ZONE, TRANSECT, CLASSCODE) %>% # group by site, zone, transect, and species
+   dplyr::summarise(transect.count = sum(count.extrapolated, na.rm = T)) %>% # add the three segments per transect. This adds all counts with the same site, date, zone, transect, and classcode.
+   dplyr::mutate(Density = (transect.count / 60)) %>% # calculate density for the entire 30 x 2 m transect
+   dplyr::mutate(ZONE = if_else(ZONE =='MID', 'M', 'S')) # abbreviate MID and SHALLOW zones
+
+## Add taxonomic groups for splitting up analyses
+swath_data$tax.group <- NA # create new column to now populate
+# Anemones
+swath_data$tax.group[which(swath_data$CLASSCODE %in% c('ANTSOL', 'ANTXAN', 'OTHERURT', 'URTLOF', 'URTPIS'))] = 'anemone' #
+# Barnacle, tunicate, sponge
+swath_data$tax.group[which(swath_data$CLASSCODE %in% c('BALNUB', 'STYMON', 'TETAUR', 'sponge'))] = 'bar.tun.spo'
+# Mollusks
+swath_data$tax.group[which(swath_data$CLASSCODE %in% c('CERFOL', 'CRAGIG', 'KELKEL'))] = 'mollusk'
+# Crab
+swath_data$tax.group[which(swath_data$CLASSCODE %in% c('CRYSTE', 'PUGPRO', 'PUGRIC'))] = 'crab'
+# Cucumbers
+swath_data$tax.group[which(swath_data$CLASSCODE %in% c('CUCMIN', 'PARCAL', 'PARPAR'))] = 'cucumber'
+# Stars
+swath_data$tax.group[which(swath_data$CLASSCODE %in% c('DERIMB', 'HENLEV', 'PISOCH', 'PISGIG', 'PATMIN', 'JUVPISGIG'))] = 'star'
+# Algae
+swath_data$tax.group[which(swath_data$CLASSCODE %in% c('NERLUE', 'LAMSET', 'DICTYO', 'PTECALAD'))] = 'alga'
+
+urchin_size <- read_csv('URCHIN_survey_data - URCHIN_size_data_entry.csv') %>% dplyr::mutate(date = dmy(date)) 
+urchin_total_count <- read_csv('URCHIN_survey_data - URCHIN_TOTAL_count_data_entry.csv') %>% dplyr::mutate(date = dmy(date))
+
+```
+
+```{r 2022 Sonoma Cruise urchins}
+urchin.ftross.timbercove <- abu %>% 
+   rowwise() %>% # do the next functions by rows
+   dplyr::mutate(purp_sum = sum(c_across(c(purp_1:purp_8)), na.rm = T)) %>% # make a new col that sums the Purp_1 to Purp_8 rows
+   dplyr::mutate(red_sum  = sum(c_across(c(red_1:red_15)), na.rm = T)) %>% # make a new col that sums Reds
+   dplyr::mutate(purp_sum_10m = (purp_sum / (purp_meter))*10) %>% # extrapolate purples in the whole 10m segment in new col
+   dplyr::mutate(red_sum_10m  = (red_sum  / (red_meter))*10) %>% # extrapolate reds in whole 10m segment in new col
+   #hm I will need to combine all three 10m segments per transect so there are only 4 rows.
+   dplyr::group_by(site, date, subsite, swathtrans, zone) %>% # group by site, transect and Zone (depth). I believe this overrides the rowwise function.
+   dplyr::summarise(purp_sum = sum(purp_sum_10m, na.rm = T), red_sum = sum(red_sum_10m, na.rm = T)) %>%  # add up all three transect sbusections per transect
+   dplyr::rowwise() %>% # do the next function by rows
+   dplyr::mutate(urchin_sum = sum(c_across(c(purp_sum, red_sum)), na.rm = T)) %>% # calculate total urchins each species
+   dplyr::mutate(purp_m2 = purp_sum / 60, red_m2 = red_sum / 60, urchin_m2 = urchin_sum / 60) # calculate density for the entire 30 x 2 m transect
+   
+# View(urchin.ftross.timbercove) # look at the data frame to check for errors
+
+# Figure #
+# Urchin densities per transect per sites in m-2 
+
+ND.text <- data.frame(site = 'Fort Ross', subsite = 'North', swathtrans = 2, zone = 'M', Species = 'purp_m2', density_m2 = 10, lab = "ND") # to add ND to just one facet of the figure
+
+# display urchin densities for both species
+urchin.ftross.timbercove.long <- urchin.ftross.timbercove %>%
+   dplyr::select(site, subsite, swathtrans, zone, purp_m2, red_m2) %>% 
+   tidyr::pivot_longer(6:7, names_to = 'Species', values_to = 'density_m2')
+
+ggplot(urchin.ftross.timbercove.long, aes(x = paste(zone, swathtrans), y = density_m2, fill = Species)) +
+   facet_wrap(~paste(site, subsite)) +
+   geom_col(position = position_stack()) +
+   scale_y_continuous(limits = c(0, 100), expand = c(0,0)) +
+   scale_fill_manual(values = c('mediumpurple','red4'), labels = c('Purple','Red')) +
+   labs(y = bquote(paste('Density (no. ', ~m^-2, ')')), x = 'Transect') + # this was so hard to figure out SAVE IT!!!
+   ggtitle('Urchin densities September 2022') +
+   geom_text(data = ND.text, label = 'ND') +
+   theme(legend.position = c(.9, .87)) 
+
+# Calculate mean densities for both sites
+mean_urchin_dens_site_2022 <- urchin.ftross.timbercove.long %>%
+  dplyr::group_by(site, date, Species) %>%
+  dplyr::summarise(mean_density_m2 = mean(density_m2), sd = sd(density_m2), n = n()) 
+# save as a separate object for use later
+
+ggplot(mean_urchin_dens_site_2022, aes(x = site, y = mean_density_m2, fill = Species)) +
+  geom_errorbar(aes(ymin = mean_density_m2 - sd, ymax = mean_density_m2 + sd), width = 0, position = position_dodge(1)) +
+  geom_col(position = position_dodge(1)) +
+   scale_fill_manual(values = c('mediumpurple','red4'), labels = c('Purple','Red')) +
+  scale_y_continuous(expand = c(0,0), limits = c(-10,60), breaks = seq(-10,60,10))
+
+#### Urchin size distributions ####
+
+# Purple counts extrapolated 
+purp_counts <- abu %>%
+    select(-c(enterer, date, avg_depth_fsw, heading, transect, notes, observer, buddy, red_meter, red_1:red_15, red_abalone, pinto_abalone)) %>% # remove cols I'm not analyzing now
+    pivot_longer(cols = c(purp_1:purp_8), names_to = 'diameter_cm', values_to = 'count') %>%
+    dplyr::mutate(purp_extrap = (count / purp_meter) * 10) %>% # extrapolate each size class to 10 m sampled.
+    replace_na(list(purp_extrap = 0)) %>% # make NA counts 0
+    separate_wider_delim(diameter_cm, delim = "_", names = c(NA, "diameter_cm")) %>%
+    dplyr::group_by(site, subsite, swathtrans, zone, diameter_cm) %>%
+    dplyr::summarise(tot_count = sum(purp_extrap, na.rm = T)) %>% # add the three subsections together that are part of the same transect
+    dplyr::mutate(species = 'purple')
+
+# red counts extrapolated
+red_counts <- abu %>%
+    select(-c(enterer, date, avg_depth_fsw, heading, transect, notes, observer, buddy, purp_meter, purp_1:purp_8, red_abalone, pinto_abalone)) %>% # remove cols I'm not analyzing now
+    pivot_longer(cols = c(red_1:red_15), names_to = 'diameter_cm', values_to = 'count') %>%
+    dplyr::mutate(red_extrap = (count / red_meter) * 10) %>% # extrapolate each size class to 10 m sampled.
+    replace_na(list(red_extrap = 0)) %>% # make NA counts 0
+    separate_wider_delim(diameter_cm, delim = "_", names = c(NA, "diameter_cm")) %>%
+    dplyr::group_by(site, subsite, swathtrans, zone, diameter_cm) %>%
+    dplyr::summarise(tot_count = sum(red_extrap, na.rm = T)) %>% # add the three subsections together that are part of the same transect
+  dplyr::mutate(species = 'red')
+
+urchin_counts_2022 <- rbind(purp_counts, red_counts) %>%
+  dplyr::mutate(diameter_cm = as.numeric(diameter_cm), tot_count = as.integer(tot_count)) # make diameters numeric and tot_count integer
+
+# histogram with both species
+ggplot(urchin_counts_2022, aes(x = diameter_cm, y = tot_count, fill = species)) +
+  facet_grid('site') +
+  geom_col() +
+  scale_fill_manual(values = c('mediumpurple', 'red4')) +
+  scale_x_continuous(breaks = seq(0, 15, 1)) +
+  scale_y_continuous(expand = c(0,0)) +
+  labs(x = 'Diameter (cm)', y = "Count") +
+  ggtitle('Urchin sizes (extrapolated) from 15 transects in 2022')
+
+urchin_counts_2022 %>%
+  tidyr::uncount(weights = tot_count) %>% # repeats the row according to the 'tot_count' column so each value is shown the number of times we observed it.
+  dplyr::group_by(site, species) %>%
+  dplyr::summarise(mean_diam_cm = mean(diameter_cm), sd_diam_cm = sd(diameter_cm), n = n()) %>%
+  ggplot(aes(x = species, y = mean_diam_cm, fill = species)) +
+  facet_wrap(~site) +
+  geom_errorbar(aes(ymin = mean_diam_cm - sd_diam_cm, ymax = mean_diam_cm + sd_diam_cm), width = 0) +
+  geom_col() +
+  scale_y_continuous(expand = c(0,0), limits = c(0,10)) +
+  scale_fill_manual(values = c('mediumpurple', 'red4')) +
+  labs(x = 'Species', y = 'Mean diameter (cm)') +
+  ggtitle('Mean urchin diameter in 15 transects in 2022') +
+  theme(legend.position = 'none')
+
+```
+Urchin sizes from 2022 were extrapolated to the entire 30 m transect in which they were counted. Urchin sizes from 2023 were measured from 100 urchins per transect. Means here reflect the mean of all urchins measured, not means by transect because in 2023 transects were not reported.
+
+```{r 2022 Sonoma Cruise abalone}
+## How many red and pinto abalone per transect?
+abs <- abu %>%
+   select(site, subsite, swathtrans, zone, red_abalone, pinto_abalone) %>%
+   replace_na(list(pinto_abalone = 0, red_abalone = 0)) %>% # make NA values 0
+   pivot_longer(5:6, names_to = 'Species', values_to = 'Count') %>%# make species and count columns.
+  dplyr::mutate(density_m2 = Count / 60) # make density column
+
+# Figure #
+# Abalone densities per transect per sites in m-2 
+ggplot(abs, aes(x = paste(zone, swathtrans), y = density_m2, fill = Species)) +
+   geom_col() +
+   scale_y_continuous(limits = c(0, 0.26), expand = c(0,0)) +
+   scale_fill_manual(values = c('lightpink','red3'), labels = c('Pinto','Red')) +
+   labs(y = bquote(paste('Density (no. ', ~m^-2, ')')), x = 'Transect') + # this was so hard to figure out: SAVE IT!!!
+   ggtitle('Abalone densities September 2022') + 
+   facet_wrap(~paste(site, subsite)) +
+   theme(legend.position = c(.9, .87))
+```
+
+```{r 2022 Sonoma Cruise algae}
+algae_data <- swath_data %>%
+  filter(tax.group == 'alga') 
+# %>%
+#    dplyr::mutate(CLASSCODE = replace(CLASSCODE, CLASSCODE == 'DICTYO', 'Dictyoneurum')) %>% # change species name
+#    dplyr::mutate(CLASSCODE = replace(CLASSCODE, CLASSCODE == 'LAMSET', 'L. Setchelli')) %>% # change species name
+#    dplyr::mutate(CLASSCODE = replace(CLASSCODE, CLASSCODE == 'NERLUE', 'N. luetkeana')) %>% # change species name
+#    dplyr::mutate(CLASSCODE = replace(CLASSCODE, CLASSCODE == 'PTECALAD', 'P. Californica')) # change species name
+
+## Create df with 0s for DICTYO density at FRC north and Timber north, as well as 0 density for NERLUE at FRC main and north and Timber north so it plots it. each one has 4 transects (2 zones * 2 depths) so that means this tibble will have 20 rows.
+# zero.algae <- data.frame(SITE = c(rep('fort_ross', 4), rep('timber', 4), rep('fort_ross', 4), rep('fort_ross', 4), rep('timber', 4)),
+#             SUBSITE = c(rep('North', 8), rep('Main', 4), rep('North', 8)),
+#             ZONE = c(rep('M',2), rep('S',2)),
+#             TRANSECT = c(1,2),
+#             CLASSCODE = c(rep('DICTYO',8), rep('NERLUE', 12)),
+#             transect.count = 0,
+#             Density = 0
+#             )
+
+# algae <- rbind(algae.data, zero.algae) #combine the zeros with the rest of the algae data
+
+# Figure #
+# Mean alga density per site September 2022
+ggplot(algae_data, aes(x = paste(ZONE, TRANSECT), fill = CLASSCODE, y = Density)) +
+   facet_wrap(~paste(SITE, SUBSITE)) +
+   geom_col() +
+   scale_y_continuous(limits = c(0, 2.5), expand = c(0,0)) +
+   labs(y = bquote(paste('Density (no. ', ~m^-2, ')')), x = 'Transect') + # this was so hard to figure out: SAVE IT!!!
+   scale_fill_manual(values = c('navy', 'saddlebrown', 'seagreen', 'lightskyblue'), name = "Species") +
+   ggtitle('Alga densities September 2022') +
+   theme(legend.position = c(.85, .8))
+
+# Mean bull kelp density Sep 2022
+algae_data %>%
+  filter(CLASSCODE == 'NERLUE') %>% # just bull kelp
+  dplyr::group_by(SITE) %>%
+  dplyr::summarise(mean_den_m2 = mean(Density), sd = sd(Density), n = n()) %>%
+  ggplot(aes(x = paste(SITE, 'Sep-2022'), y = mean_den_m2)) +
+  geom_errorbar(aes(ymin = 0 , ymax = mean_den_m2 + sd), width = 0) +
+  geom_col(fill = 'seagreen')+
+  labs(y = bquote(paste('Density (no. ', ~m^-2, ')')), x = 'Site & date') +
+  ggtitle('Mean bull kelp density 2022') +
+  theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1))
+   
+```
+
+# Community analyses
+```{r 2022 Sonoma Cruise other invert data}
+# other inverts include:
+## ANTSOL, Anthopleura sola, green anemone                            #
+## ANTXAN, Anthopleura xanthogrammica, giant green anemone            #
+## BALNUB, Balanus nubilis, barnacle                                  #
+## CERFOL, Ceratostoma foliatum, leafy hornmouth (whelk)              #
+## CRAGIG, Crassedoma giganteum, rock scallop                         #
+## CRYSTE, Cryptolithoides sitchensis, umbrella crab                  #
+## CUCMIN, Cucumaria minata, orange sea cucumber                      #
+## DERIMB, Dermasterias imbricata, leather star                       #
+## HENLEV, Henricia leviuscula, blood star                            #
+## JUVPISGIG, juvenile Pisaster gigateus, juvenile giant spined star  #
+## KELKEL, Kelletia kelletii, Kellet's whelk                          #
+## OTHERURT, other Urticina anemone                                   #
+## PARCAL, Parastichopus californicus, california sea cucumber        #
+## PARPAR, Parastichopus parvimensis, warty sea cucumber              #
+## PATMIN, Patiria miniata, bat star                                  #
+## PISGIG, Pisaster giganteus, giant spine star                       #
+## PISOCH, Pisaster ochraceous, ochre star                            #
+## PUGPRO, PUgettia producta, kelp crab                               #
+## PUGRIC, Pugettia richii, kelp crab                                 #
+## sponge, unknown sponge spp                                         #
+## STYMON, Styela montereyensis, stalked tunicate                     #
+## TETAUR, Tethya aurantia, orange puffball sponge                    #
+## URTLOF, Urticina lofotensis, anemone                               #
+## URTPIS, Urticina piscivora, fish-eating anemone                    #
+## WAIT NO URCHINS????? #***
+# must add urchins.
+
+urchin_dens_for_swath <- urchin.ftross.timbercove %>% 
+  dplyr::select(site, date, subsite, zone, swathtrans, purp_sum, red_sum) %>% # just the cols I want to manipulate
+  dplyr::rename(SITE = site, DATE = date, SUBSITE = subsite, ZONE = zone, TRANSECT = swathtrans, STRPUR = purp_sum, MESFRA = red_sum) %>% # rename cols to match swath tibble 
+  tidyr::pivot_longer(c(STRPUR, MESFRA), names_to = 'CLASSCODE', values_to = 'transect.count') %>% # make new cols with classcodes and densities
+  dplyr::mutate(Density = transect.count / 60) %>% # calculate density
+  dplyr::mutate(DATE = mdy(DATE)) %>% # format dates
+  dplyr::mutate(tax.group = 'urchin')
+
+# change Fort Ross to fort_ross and Timber to timber to make the merging tibble
+urchin_dens_for_swath$SITE[which(urchin_dens_for_swath$SITE == 'Fort Ross')] = 'fort_ross'
+urchin_dens_for_swath$SITE[which(urchin_dens_for_swath$SITE == 'Timber')] = 'timber'
+
+swath_abu <- rbind(swath_data, urchin_dens_for_swath) # add the urchin densities to the swath densities
+
+#### Shannon-Wiener diversity ####
+# calculate SW diversity for each transect, then calculate averages per site. 
+# convert swath_data to the correct format.
+swath_matrix <- swath_data %>%
+  select(CLASSCODE, Density) %>%
+  # I want each col to be a species, rows to be site-subsite-zone-transect, and values to be densities.
+  pivot_wider(names_from = 'CLASSCODE', values_from = 'Density') %>%
+  mutate_at(c(swath_data$CLASSCODE), ~replace_na(.,0)) # replace all NAs with 0s because NA means they had 0 density in this case.
+
+swath_matrix_div <- data.frame(swath_matrix) # make it a data frame so I can remove grouping columns
+swath_matrix_div$SITE = NULL
+swath_matrix_div$DATE = NULL
+swath_matrix_div$SUBSITE = NULL
+swath_matrix_div$ZONE = NULL
+swath_matrix_div$TRANSECT = NULL
+
+Hi <- diversity(swath_matrix_div, index = 'shannon') # this calculates shannon diversity.
+
+swath_diversity <- swath_matrix %>%
+  dplyr::select(SITE, DATE, SUBSITE, ZONE, TRANSECT) 
+
+swath_diversity$H = Hi # add the H index values to the tibble
+
+## figure ##
+ggplot(swath_diversity, aes(x = paste(ZONE, TRANSECT), y = H)) +
+  facet_wrap(~paste(SITE, SUBSITE)) +
+  geom_col() +
+  scale_y_continuous(expand = c(0,0)) +
+  labs(x = 'Transect') +
+  ggtitle('Shannon-Wiener diversity in invert & algae swaths')
+
+## Find average H index and use error bars to compare sites.
+swath_diversity %>%
+  dplyr::group_by(SITE) %>%
+  dplyr::summarize(mean_H = mean(H, na.rm = T), sd = sd(H, na.rm = T), n = n()) %>%
+  ggplot(aes(x = SITE, y = mean_H)) +
+  geom_errorbar(aes(ymin = mean_H - sd, ymax = mean_H + sd), width = 0) +
+  geom_col() +
+  scale_y_continuous(expand = c(0,0), limits = c(0, 1.5)) +
+  ggtitle('Mean Shannon-Wiener diversity in invert & algae swaths 2022')
+
+# same thing but with the added urchin densities from abu.
+swath_abu_matrix <- swath_abu %>%
+  select(CLASSCODE, Density) %>%
+  # I want each col to be a species, rows to be site-subsite-zone-transect, and values to be densities.
+  pivot_wider(names_from = 'CLASSCODE', values_from = 'Density') %>%
+  mutate_at(c(swath_data$CLASSCODE), ~replace_na(.,0)) # replace all NAs with 0s because NA means they had 0 density in this case.
+
+swath_abu_matrix_div <- data.frame(swath_abu_matrix) # make it a data frame so I can remove grouping columns
+swath_abu_matrix_div$SITE = NULL
+swath_abu_matrix_div$DATE = NULL
+swath_abu_matrix_div$SUBSITE = NULL
+swath_abu_matrix_div$ZONE = NULL
+swath_abu_matrix_div$TRANSECT = NULL
+
+Hi_swath_abu <- diversity(swath_abu_matrix_div, index = 'shannon') # this calculates shannon diversity.
+
+swath_abu_diversity <- swath_abu_matrix %>%
+  dplyr::select(SITE, DATE, SUBSITE, ZONE, TRANSECT) 
+
+swath_abu_diversity$H = Hi_swath_abu # add the H index values to the tibble
+
+## figure with swath_abu combined densities ##
+ggplot(swath_abu_diversity, aes(x = paste(ZONE, TRANSECT), y = H)) +
+  facet_wrap(~paste(SITE, SUBSITE)) +
+  geom_col() +
+  scale_y_continuous(expand = c(0,0), limits = c(0, 1.5)) +
+  labs(x = 'Transect') +
+  ggtitle('Shannon-Wiener diversity in invert & algae swaths and urchins in abu')
+
+## Find average H index and use error bars to compare sites.
+swath_abu_diversity %>%
+  dplyr::group_by(SITE) %>%
+  dplyr::summarize(mean_H = mean(H, na.rm = T), sd = sd(H, na.rm = T), n = n()) %>%
+  ggplot(aes(x = SITE, y = mean_H)) +
+  geom_errorbar(aes(ymin = mean_H - sd, ymax = mean_H + sd), width = 0) +
+  geom_col() +
+  scale_y_continuous(expand = c(0,0), limits = c(0, 1.5)) +
+  ggtitle('Mean Shannon-Wiener diversity in invert & algae swaths & urchins in abu 2022')
+
+```
+
+```{r NMDS plot for densities at each site,	results = 'hide'}
+# to visualize how the communities are different
+
+swath_matrix_counts <- swath_data %>% 
+  select(CLASSCODE, transect.count) %>%
+  # I want each col to be a species, rows to be site-subsite-zone-transect, and values to be densities.
+  pivot_wider(names_from = 'CLASSCODE', values_from = 'transect.count')
+
+swath_matrix_counts_div <- data.frame(swath_matrix_counts) # make it a data frame so I can remove grouping columns
+swath_matrix_counts_div$SITE = NULL
+swath_matrix_counts_div$DATE = NULL
+swath_matrix_counts_div$SUBSITE = NULL
+swath_matrix_counts_div$ZONE = NULL
+swath_matrix_counts_div$TRANSECT = NULL
+
+## Convert absolute abundance to relative abundance to standardize
+swath_spp_rel <- decostand(swath_matrix_counts_div, method = 'total')
+
+MDS1 <- metaMDS(swath_spp_rel, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.0691.
+# It does say the best solution was not repeated and that stress ratio > stratmax. Keep this information for the future, as it may be important.
+
+# plot(MDS1) #not very helpful bc it doesn't show the groupings.
+
+## reformat so it can be plotted in ggplot with groupings
+data_scores <- as.data.frame(scores(MDS1)$sites)
+
+## Add back identifier columns
+data_scores$site = swath_matrix_counts$SITE 
+data_scores$date = swath_matrix_counts$DATE 
+data_scores$subsite = swath_matrix_counts$SUBSITE
+data_scores$zone = swath_matrix_counts$ZONE
+data_scores$transect = swath_matrix_counts$TRANSECT
+
+## Make the ggplot
+ggplot(data_scores, aes(x = NMDS1, y = NMDS2)) +
+  geom_point(size = 4, aes(color = site, shape = site)) +
+  annotate('text', x = 1.05, y = .1, label = 'These two transects') +
+  annotate('text', x = 1.05, y = .05, label = 'had bull kelp') +
+  ggtitle('Swath community dissimilarities')
+
+#### Test if there is a significant difference btwn the two sites. ####
+# Calculate bray-curtis dissimilarities
+swath_spp_dist <- vegdist(swath_spp_rel, method = 'bray') #not sure why I did this. Maybe for the mrpp?
+
+mrpp(swath_spp_rel, grouping = swath_matrix_counts$SITE, permutations = 999, distance = 'bray')
+# omg it worked?! what does it mean... 
+# Chance corrected within-group agreement A: 0.07423 
+# Based on observed delta 0.3901 and expected delta 0.4214 
+# Significance of delta: 0.029 
+# Multiple Response Permutation Procedure (MRPP) provides a test of whether there is a significant difference between two or more groups of sampling units. Function meandist finds the mean within and between block dissimilarities.
+
+# another term is dist, which is a dist object of dissimilarities, such as produced by functions dist, vegdist, or designdist. 
+
+# summary(meandist(swath_spp_dist, grouping = swath_matrix_counts$SITE)) # I don't know what this means yet. #***
+
+# ANOSIM test also tests if there are differences among groups
+ano_test = anosim(swath_spp_rel, swath_matrix_counts$SITE, distance = "bray", permutations = 999)
+ano_test
+# large R means larger difs between groups
+
+# Which species are most responsible for any community differences observed? Calculate discriminating species between two groups using BC dissimilarities.
+simper(swath_spp_rel, group = swath_matrix_counts$SITE)
+# looks like the species most important for discriminating among samples is patmin, cucmin, nerlue, and urtpis, but honestly I forget exactly how to interpret these, so work on it.
+
+#### Same thing with urchin densities from abu added ####
+swath_abu_matrix_counts <- swath_abu %>% 
+  select(CLASSCODE, transect.count) %>%
+  # I want each col to be a species, rows to be site-subsite-zone-transect, and values to be densities.
+  pivot_wider(names_from = 'CLASSCODE', values_from = 'transect.count')
+ 
+swath_abu_matrix_counts_div <- data.frame(swath_abu_matrix_counts) # make it a data frame so I can remove grouping columns
+swath_abu_matrix_counts_div$SITE = NULL
+swath_abu_matrix_counts_div$DATE = NULL
+swath_abu_matrix_counts_div$SUBSITE = NULL
+swath_abu_matrix_counts_div$ZONE = NULL
+swath_abu_matrix_counts_div$TRANSECT = NULL
+
+## Convert absolute abundance to relative abundance to standardize
+swath_abu_spp_rel <- decostand(swath_abu_matrix_counts_div, method = 'total')
+
+MDS1_sa <- metaMDS(swath_abu_spp_rel, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.1 ish
+
+## reformat so it can be plotted in ggplot with groupings
+data_scores_sa <- as.data.frame(scores(MDS1_sa)$sites)
+
+## Add back identifier columns
+data_scores_sa$site     = swath_abu_matrix_counts$SITE 
+data_scores_sa$date     = swath_abu_matrix_counts$DATE 
+data_scores_sa$subsite  = swath_abu_matrix_counts$SUBSITE
+data_scores_sa$zone     = swath_abu_matrix_counts$ZONE
+data_scores_sa$transect = swath_abu_matrix_counts$TRANSECT
+
+## Make the ggplot
+ggplot(data_scores_sa, aes(x = NMDS1, y = NMDS2)) +
+  geom_point(size = 4, aes(color = site, shape = site)) +
+  annotate('text', x = .49, y = .35, label = 'These two transects') +
+  annotate('text', x = .49, y = .31, label = 'had bull kelp') +
+  ggtitle('Swath + abu community dissimilarities')
+
+#### Test if there is a significant difference btwn the two sites. ####
+# Calculate bray-curtis dissimilarities
+swath_abu_spp_dist <- vegdist(swath_abu_spp_rel, method = 'bray') #not sure why I did this. Maybe for the mrpp?
+
+mrpp(swath_abu_spp_rel, grouping = swath_abu_matrix_counts$SITE, permutations = 999, distance = 'bray')
+# omg it worked?! what does it mean... 
+# Chance corrected within-group agreement A: -0.0035 
+# Based on observed delta 0.2619 and expected delta 0.261 
+# Significance of delta: 0.382
+
+# Multiple Response Permutation Procedure (MRPP) provides a test of whether there is a significant difference between two or more groups of sampling units. Function meandist finds the mean within and between block dissimilarities.
+
+# another term is dist, which is a dist object of dissimilarities, such as produced by functions dist, vegdist, or designdist. 
+
+# ANOSIM test also tests if there are differences among groups
+ano_test_sa = anosim(swath_abu_spp_rel, swath_matrix_counts$SITE, distance = "bray", permutations = 999)
+ano_test_sa
+# large R means larger difs between groups NO DIFS.
+
+# Which species are most responsible for any community differences observed? (which there are none.) Calculate discriminating species between two groups using BC dissimilarities.
+simper(swath_abu_spp_rel, group = swath_matrix_counts$SITE)
+# looks like the species most important for discriminating among samples is purple urchin, red urchin, and nerlue.
+```
+In these NMDS plots, the closer together the points, the more similar the communities. Differences were calculated using the Bray-Curtis method, and were largely driven by differences in abundances of the following four species: *Patiria miniata*, *Cucumaria miniata*, *Nereocystis luetkeana*, and *Urticina piscivora*. This is a draft analysis that requires more quality checks. 
+An analysis of similarities (anosim) tests whether there is a significant difference between groups of sampling units. An anosim testing showed significant differences among the communities at Fort Ross and Timber Coves (R = 0.15 and P = 0.039, Bray-Curtis dissimilarities, 999 permutations).
+
+```{r individual species densities}
+#### Anemone densities ####
+ggplot(swath_data %>% filter(tax.group == 'anemone'), aes(x = SITE, fill = CLASSCODE, y = Density)) +
+   geom_col() +
+   scale_y_continuous(expand = c(0,0), limits = c(0, 1.2), breaks = seq(0,1.2,.3)) +
+   labs(y = bquote(paste('Density (no. ', ~m^-2, ')'))) + # this was so hard to figure out: SAVE IT!!!
+   ggtitle('Anemone densities September 2022') 
+
+#### Barnacle, tunicate, sponge densities ####
+ggplot(swath_data %>% filter(tax.group == 'bar.tun.spo'), aes(x = SITE, fill = CLASSCODE, y = Density)) +
+   geom_col(position = position_dodge(1)) + # I could add zeros for the species with no observations to help with spacing the bars
+   scale_y_continuous(expand = c(0,0), limits = c(0, .2)) +
+   labs(y = bquote(paste('Density (no. ', ~m^-2, ')'))) + # this was so hard to figure out: SAVE IT!!!
+   ggtitle('Barnacle, sponge, and tunicate densities September 2022') +
+   theme(legend.position = c(.83, .75))
+
+#### Mollusks ####
+ggplot(swath_data %>% filter(tax.group == 'mollusk'), aes(x = SITE, fill = CLASSCODE, y = Density)) +
+   geom_col(position = position_dodge(1)) + # I could add zeros for the species with no observations to help with spacing the bars. however that would take some time and I don't know if it's necessary.
+   scale_y_continuous(expand = c(0,0)) +
+   labs(y = bquote(paste('Density (no. ', ~m^-2, ')'))) + # this was so hard to figure out: SAVE IT!!!
+   ggtitle('Mollusk densities September 2022') +
+   theme(legend.position = c(.23, .75))
+
+#### Cucumbers ####
+ggplot(swath_data %>% filter(tax.group == 'cucumber'), aes(x = SITE, fill = CLASSCODE, y = Density)) +
+   geom_col(position = position_dodge(1)) + 
+   scale_y_continuous(expand = c(0,0)) +
+   labs(y = bquote(paste('Density (no. ', ~m^-2, ')'))) + 
+   ggtitle('Cucumber densities September 2022') +
+   theme(legend.position = c(.83, .75))
+
+#### Stars ####
+ggplot(swath_data %>% filter(tax.group == 'star'), aes(x = SITE, fill = CLASSCODE, y = Density)) +
+   geom_col() + 
+   scale_y_continuous(expand = c(0,0), limits = c(0, 12), breaks = seq(0,12,2)) +
+   labs(y = bquote(paste('Density (no. ', ~m^-2, ')'))) + 
+   ggtitle('Star densities September 2022') 
+
+#### Crabs ####
+ggplot(swath_data %>% filter(tax.group == 'crab'), aes(x = SITE, fill = CLASSCODE, y = Density)) +
+   geom_col(position = position_dodge(1)) + 
+   scale_y_continuous(expand = c(0,0)) +
+   labs(y = bquote(paste('Density (no. ', ~m^-2, ')'))) + 
+   ggtitle('Crab densities September 2022') +
+   theme(legend.position = c(.83, .75))
+```
+
+# Fort Ross Cove 2023
+```{r calculate mean urchin density per quad}
+mean_urchin_density_frc_a1aug <- urchin_total_count %>%
+  dplyr::filter(block == "A", quad == 1, date == "2023-08-10") %>% # only use data from block A quad 1 on Aug 10.
+  dplyr::select('date','site','block','quad','transect_no','purp_count','red_count') %>% # just display these columns
+  dplyr::rename(purple = purp_count, red = red_count) %>% #rename these columns
+  pivot_longer(cols = c('purple','red'), names_to = 'species', values_to = 'count') %>%
+  dplyr::mutate(density_m2 = count/60) %>% # calculate density in the 60 m2 area
+  dplyr::group_by(species) %>%
+  dplyr::summarize(mean_density_m2 = mean(density_m2), sd = sd(density_m2), n = n()) # calculate average of the three transects in the quad
+
+flextable(mean_urchin_density_frc_a1aug)
+
+ggplot(mean_urchin_density_frc_a1aug, aes(x = species, y = mean_density_m2, fill = species)) +   geom_bar(stat='identity', position = position_dodge()) +
+  geom_errorbar(aes(ymin = mean_density_m2 - sd, ymax = mean_density_m2 + sd), width = 0, position=position_dodge()) +
+  scale_y_continuous(expand = c(0,0), limits = c(0,45)) +
+  scale_fill_manual(values = c('mediumpurple', 'red4')) +
+  labs(y = bquote(paste('Density (no. ', ~m^-2, ')')), x = 'Species') +
+  ggtitle('Urchin Density Fort Ross Cove Quad A1 10 Aug 2023')
+
+# Repeat with other Fort Ross Cove dates.
+mean_urchin_density_frc_month_2023 <- urchin_total_count %>% 
+  dplyr::select('date','site','block','quad','transect_no','purp_count','red_count') %>% # just display these columns
+  dplyr::filter(site == 'Fort Ross Cove') %>%
+  dplyr::mutate(month = month(date), b = format(date, format = "%b")) %>% # make month column. The month cols are no longer date class.
+  dplyr::rename(purple = purp_count, red = red_count) %>% #rename these columns
+  pivot_longer(cols = c('purple','red'), names_to = 'species', values_to = 'count') %>%
+  dplyr::mutate(density_m2 = count/60) %>% # calculate density in the 60 m2 area
+  dplyr::group_by(species, b) %>%
+  dplyr::summarize(mean_density_m2 = mean(density_m2), sd = sd(density_m2), n = n())  # calculate average and sd of densities
+
+flextable(mean_urchin_density_frc_month_2023)
+
+# png(filename = "mean_urchin_den_frc_month_sp.png", width = 400, height = 280) # saves the figure below
+
+dodge <- .8
+ggplot(mean_urchin_density_frc_month_2023, aes(x = b, y = mean_density_m2, fill = species)) +
+  geom_errorbar(aes(ymin = mean_density_m2 - sd, ymax = mean_density_m2 + sd), width = 0, position=position_dodge(dodge)) +
+  geom_bar(stat='identity', width = .8, position = position_dodge(dodge)) +
+  scale_y_continuous(limits = c(0,46), breaks = seq(0,45,5), expand = c(0,0)) +
+  scale_fill_manual(values = c('mediumpurple', 'red4')) +
+  labs(x = 'Month', y = bquote(paste('Urchin density (no.  ', ~m^-2, ')'))) +
+  # scale_x_date(date_labels = '%b', breaks = ymd(c('2023-08-11','2023-09-03','2023-10-05'))) +
+  ggtitle('Mean urchin density Fort Ross Cove 2023') +
+  theme(legend.position = c(.85, .8))
+# dev.off() 
+
+# Fort Ross Cove mean urchin densities across the whole year (don't subset by month)
+mean_urchin_density_frc_2023 <- urchin_total_count %>% 
+  dplyr::select('site','block','quad','transect_no','purp_count','red_count') %>% # just display these columns
+  dplyr::filter(site == 'Fort Ross Cove') %>%
+  dplyr::rename(purple = purp_count, red = red_count) %>% #rename these columns
+  pivot_longer(cols = c('purple','red'), names_to = 'species', values_to = 'count') %>%
+  dplyr::mutate(density_m2 = count/60) %>% # calculate density in the 60 m2 area
+  dplyr::group_by(species) %>%
+  dplyr::summarize(mean_density_m2 = mean(density_m2), sd = sd(density_m2), n = n())
+
+```
+
+# Timber Cove in October 2023
+```{r urchin densities in not cleared vs cleared areas, echo = FALSE, message = FALSE}
+
+# trying to make a stacked bar graph showing purple and red urchin densities at TC in not cleared vs. cleared areas. 
+mean_urchin_density_tc_2023 <- urchin_total_count %>%
+  dplyr::filter(site == 'Timber Cove') %>% #just use data from Timber Cove 
+  dplyr::select(c(date, site, purp_count, red_count)) %>%
+  dplyr::rename('purple' = 'purp_count', 'red' = 'red_count') %>%
+  pivot_longer(cols = c(purple, red), names_to = 'species', values_to = 'count') %>%
+  dplyr::mutate(density_m2 = count/60) %>%
+  dplyr::group_by(date, species) %>%
+  dplyr::summarize(mean_density_m2 = mean(density_m2), sd = sd(density_m2), n = n()) %>%
+  add_column(status = c(rep("Not cleared",2), rep("Cleared",2))) # manually add a column assigning whether it was cleared by Erik and Mark or not cleared.
+ 
+# change order of factors
+mean_urchin_density_tc_2023$status = factor(mean_urchin_density_tc_2023$status, levels = c('Not cleared', 'Cleared'))
+mean_urchin_density_tc_2023$species = factor(mean_urchin_density_tc_2023$species)
+
+flextable(mean_urchin_density_tc_2023)
+
+# bar graph
+ggplot(mean_urchin_density_tc_2023, aes(x = status, y = mean_density_m2, fill = species)) +
+    geom_col(position = position_dodge(1)) +
+    geom_errorbar(aes(ymin = mean_density_m2 - sd, ymax = mean_density_m2 + sd), width = 0, position = position_dodge(1)) +
+    labs(y = bquote(paste('Density (no. ', ~m^-2, ')')), x = 'Cleared status') +
+    scale_y_continuous(limits = c(0,30), expand = c(0,0), breaks = seq(0,30,5)) +
+    scale_fill_manual(values = c('mediumpurple', 'red4')) +
+    theme(legend.position = c(.8, .8)) +
+    ggtitle('Urchin densities at Timber Cove before/after clearings Oct 2023')
+
+# side by side bar graph, like FRC
+# make new error bar object because otherwise it goes negative.
+tc_errorbar <- aes(ymin = c(
+  mean_urchin_density_tc_2023$mean_density_m2[1] - mean_urchin_density_tc_2023$sd[1], 
+  mean_urchin_density_tc_2023$mean_density_m2[2] - mean_urchin_density_tc_2023$sd[2], 
+  mean_urchin_density_tc_2023$mean_density_m2[3] - mean_urchin_density_tc_2023$sd[3],
+  0) 
+                , ymax = mean_density_m2 + sd)
+# png(filename = "mean_urchin_den_tc_cleared_sp.png", width = 400, height = 280) # saves the figure below
+
+ggplot(mean_urchin_density_tc_2023, aes(x = status, y = mean_density_m2, fill = species)) +
+    geom_col(width = 0.8, position = position_dodge(dodge)) +
+    geom_errorbar(tc_errorbar, width = 0, position=position_dodge(dodge)) +
+    labs(y = bquote(paste('Urchin density (no. ', ~m^-2, ')')), x = 'Cleared status') +
+    scale_y_continuous(limits = c(0,30), expand = c(0,0), breaks = seq(0,30,5)) +
+    scale_fill_manual(values = c('mediumpurple', 'red4')) +
+    theme(legend.position = c(.8, .8)) +
+    ggtitle('Mean urchin density Timber Cove Oct 2023')
+
+# dev.off()
+
+# plot the total urchin counts in a different way (combine red and purple into a total). 
+mean_comb_urchin_density_tc_2023 <- urchin_total_count %>%
+  dplyr::filter(site == 'Timber Cove') %>%
+  dplyr::select(c(date,site,transect_no,purp_count,red_count)) %>%
+  pivot_longer(cols = c(purp_count, red_count), names_to = 'species', values_to = 'count') %>%
+  dplyr::mutate(tot_den = count/60) %>%
+  dplyr::group_by(date, transect_no) %>% #don't group by species so it adds them together
+  dplyr::summarize(tot_den_pr = sum(tot_den), n = n()) %>% #adds up the two species within each transect
+  group_by(date) %>% # group by date only to find the mean total density per date.
+  dplyr::summarize(mean_tot_den = mean(tot_den_pr), sd_tot_den = sd(tot_den_pr), n = n()) %>%
+  add_column(status = c('Not cleared', 'Cleared'))
+
+# change factor levels again
+mean_comb_urchin_density_tc_2023$status = factor(mean_comb_urchin_density_tc_2023$status, levels = c('Not cleared','Cleared'))
+
+#second attempt at plot, this time with total density error bars
+ggplot(mean_comb_urchin_density_tc_2023, aes(x = status, y = mean_tot_den)) +
+    geom_errorbar(aes(ymin = mean_tot_den - sd_tot_den, ymax = mean_tot_den + sd_tot_den), width = 0) + 
+  geom_col(fill = 'skyblue3') +
+  labs(y = bquote(paste('Mean total urchin density (no.', ~m^-2, ')')), x = 'Cleared status') + # this was so hard to figure out SAVE IT!!!    
+    scale_y_continuous(limits = c(0,30), breaks = seq(0,28,2), expand = c(0,0)) +
+    ggtitle('Urchin densities at Timber Cove before/after clearings Oct 2023')
+
+```
+
+# Compare 2022 and 2023 urchin densities
+```{r Compare 2022 and 2023 urchin densities per site}
+mean_urch_den_2022 <- mean_urchin_dens_site_2022 %>%
+  mutate('year' = 2022, Species = str_replace(Species, "purp_m2", 'purple')) %>%
+  mutate(Species = str_replace(Species, 'red_m2', 'red')) # need to make this either red or purple.
+  
+mean_urch_den_frc_2023 <- mean_urchin_density_frc_2023 %>%
+  dplyr::rename('Species' = 'species') %>% # rename species col so they all match and we can rbind more
+  dplyr::mutate(site = 'Fort Ross', year = 2023)
+
+mean_urch_den_tc_2023 <- urchin_total_count %>%
+  dplyr::filter(site == 'Timber Cove') %>% #just use data from Timber Cove 
+  dplyr::select(c(date, site, purp_count, red_count)) %>%
+  dplyr::rename('purple' = 'purp_count', 'red' = 'red_count') %>%
+  pivot_longer(cols = c(purple, red), names_to = 'species', values_to = 'count') %>%
+  dplyr::mutate(density_m2 = count/60) %>%
+  dplyr::group_by(species) %>%
+  dplyr::summarize(mean_density_m2 = mean(density_m2), sd = sd(density_m2), n = n()) %>%
+  dplyr::rename('Species' = 'species') %>%
+  dplyr::mutate(year = 2023, site = 'Timber')
+
+mean_urch_den_22_23 <- bind_rows(mean_urch_den_2022, mean_urch_den_frc_2023, mean_urch_den_tc_2023)
+flextable(mean_urch_den_22_23)
+
+# tiff(filename = 'mean_urchin_dens_site_year.png', units = 'in', width = 5, height = 4, res = 300) # save the figure
+
+ggplot(mean_urch_den_22_23, aes(x = site, y = mean_density_m2, fill = Species)) +
+  geom_errorbar(aes(ymin = ifelse(mean_density_m2 - sd < 0 , 0, mean_density_m2 - sd), ymax = mean_density_m2 + sd), width = 0, position = position_dodge(1)) +
+  geom_col(position = position_dodge(1)) +
+  facet_wrap(~year) +
+  scale_fill_manual(values = c('mediumpurple', 'red4')) +
+  labs(y = bquote(paste('Density (no. ', ~m^-2, ')')), x = 'Site') + # this was so hard to figure out SAVE IT!!!
+  scale_y_continuous(expand = c(0,0), limits = c(0,60), breaks = seq(0,60,5)) +
+  theme(legend.position = c(.9,.8), strip.text.x = element_text(size = 18), axis.text = element_text(size = 20), axis.title = element_text(size = 20))
+
+# dev.off()
+
+## same figure as above but only showing purple urchins.
+# tiff(filename = 'mean_purchin_dens_site_year.png', units = 'in',  width = 9, height = 5, res = 300) # save the figure
+
+ggplot(mean_urch_den_22_23 %>% filter(Species == 'purple'), aes(x = site, y = mean_density_m2)) +
+  geom_errorbar(aes(ymin = ifelse(mean_density_m2 - sd < 0 , 0, mean_density_m2 - sd), ymax = mean_density_m2 + sd), width = 0, position = position_dodge(1)) +
+  geom_col(position = position_dodge(1), fill = 'mediumpurple') +
+  facet_wrap(~year) +
+  labs(y = bquote(paste('Density (no. ', ~m^-2, ')')), x = 'Site') + # this was so hard to figure out SAVE IT!!!
+  scale_y_continuous(expand = c(0,0), limits = c(0,60), breaks = seq(0,60,5)) +
+  theme(legend.position = c(.9,.8), strip.text.x = element_text(size = 18), axis.text = element_text(size = 20), axis.title = element_text(size = 20))
+
+# dev.off()
+
+```
+
+```{r urchin size data, echo = FALSE, message = FALSE}
+# histogram of all sizes
+urchin_size_summary_2023 <- urchin_size %>%
+  dplyr::mutate(month = month(date)) %>% # change to date class and make month column
+  dplyr::group_by(site, month, species, diameter_cm) %>%
+  dplyr::summarize(tot_count = sum(count)) %>%
+  dplyr::mutate(year = 2023) 
+
+ggplot(urchin_size_summary_2023, aes(x = diameter_cm, y = tot_count, fill = species)) +
+  geom_col() +
+  #facet_wrap('month') + apply this when we have multiple months of data
+  scale_fill_manual(values = c('mediumpurple', 'red4')) +
+  scale_y_continuous(expand = c(0,0), limits = c(0,85)) +
+  scale_x_continuous(breaks = seq(0,15,1)) +
+  labs(y = 'Count', x = 'Diameter (cm)') +
+  ggtitle('Urchin Size FRC Quad A1 on 10 Aug 2023') # currently that is all the size data we have, but in the future once we have quads and/or sites of size data, this title will need to be adjusted
+
+#### Mean urchin sizes for this site ####
+
+# I can't use transects as replicates because the transects weren't recorded.
+urchin_size_summary_2023 %>%
+  tidyr::uncount(weights = tot_count) %>% # repeats the row according to the 'tot_count' column so each value is shown the number of times we observed it.
+  dplyr::group_by(site, species, year) %>%
+  dplyr::summarise(mean_diam_cm = mean(diameter_cm), sd_diam_cm = sd(diameter_cm), n = n()) %>%
+# Please note we did not consistently sample reds. For example, only half of divers were even trying to count reds. 
+  ggplot(aes(x = species, y = mean_diam_cm, fill = species)) +
+  geom_errorbar(aes(ymin = mean_diam_cm - sd_diam_cm, ymax = mean_diam_cm + sd_diam_cm), width = 0) +
+  geom_col() +
+  scale_fill_manual(values = c('mediumpurple', 'red4')) +
+  scale_y_continuous(expand = c(0,0),limits = c(0, 10)) +
+  labs(x = 'Species', y = 'Mean diameter (cm)') +
+  ggtitle('Mean urchin diameter FRC Quad A1 on 10 Aug 2023\nAll transects pooled') +
+  theme(legend.position = 'none')
+
+```
+
+```{r kelp count analyses}
+kelp_sum_abj <- urchin_total_count %>%
+  replace_na(list(juv_kelp_count = 0, adult_kelp_count = 0, broke_dead_kelp_count = 0)) %>% # make missing values here 0s because I'm 90% sure they are 0s. 
+  dplyr::select(date, site, juv_kelp_count, adult_kelp_count, broke_dead_kelp_count) %>%
+  pivot_longer(cols = c(juv_kelp_count, adult_kelp_count, broke_dead_kelp_count), names_to = 'type', values_to = 'count') %>%
+  dplyr::mutate(density = count/60) %>% # add density column
+  dplyr::group_by(date, site, type) %>%
+  dplyr::summarize(mean_den_m2 = mean(density), sd = sd(density), n = n()) %>%
+  dplyr::mutate(type = replace(type, type == 'adult_kelp_count', 'adult'),) %>% # change type the type of kelp 
+  dplyr::mutate(type = replace(type, type == 'juv_kelp_count', 'juvenile'),) %>% # change type the type of kelp 
+  dplyr::mutate(type = replace(type, type == 'broke_dead_kelp_count', 'broke/dead'),) %>% # change type the type of kelp 
+  dplyr::mutate(site = replace(site, site == 'Fort Ross Cove', 'fort_ross'),) %>% # change type the type of kelp 
+  dplyr::mutate(site = replace(site, site == 'Timber Cove', 'timber'),) %>% # change type the type of kelp 
+  dplyr::mutate(d_b = format(date, format = "%d-%b"), site_date = paste(site, d_b))  # add a column that reformats the date to day-monthname and one that pastes d-month with site so I can reorder the factors so fort_ross October isn't before fort_ross August
+
+# combine with 2022 # Mean bull kelp density Sep 2022
+bull_kelp_den_2022 <- algae_data %>%
+  filter(CLASSCODE == 'NERLUE') %>% # just bull kelp
+  dplyr::group_by(SITE) %>%
+  dplyr::summarise(mean_den_m2 = mean(Density), sd = sd(Density), n = n()) %>%
+  dplyr::rename(site = SITE) %>%
+  dplyr::mutate(date = ymd('2022-09-14'), type = 'adult', d_b = '14-Sep', site_date = paste(site, d_b))
+
+bull_kelp_sum_22_23 <- rbind(kelp_sum_abj, bull_kelp_den_2022)
+
+bull_kelp_sum_22_23$site_date <- factor(bull_kelp_sum_22_23$site_date, levels = c("fort_ross 14-Sep", "timber 14-Sep", "fort_ross 10-Aug", "fort_ross 11-Aug", "fort_ross 05-Oct", "timber 02-Oct", "timber 06-Oct")) # so the site & date axis plots with dates in the correct order
+
+kelp_eb <- aes(ymin = ifelse(mean_den_m2 - sd < 0, 0, mean_den_m2 - sd), ymax = mean_den_m2 + sd)
+
+ggplot(bull_kelp_sum_22_23, aes(x = site_date, y = mean_den_m2, fill = type)) +
+  annotate('rect', xmin = -Inf, xmax = 2.55, ymin = -Inf, ymax = Inf, fill = 'grey90') +
+  geom_col(position = position_dodge(.9)) + # idk why this has to be first but it just does. and then I have to repeat it to get it in front of the shaded rectangle. so strange.
+  geom_errorbar(kelp_eb, width = 0, position = position_dodge(.9)) +
+  scale_y_continuous(expand = c(0,0), limits = c(0,1.6), breaks = seq(0,1.6,.2)) +
+  labs(y = bquote(paste('Density (no. ', ~m^-2, ')')), x = 'Site & date') + 
+  ggtitle('Mean bull kelp density 2022 & 2023') +
+  geom_col(position = position_dodge(.9)) +
+  annotate('text', x = 6, y = .55, label = 'not cleared') +
+  annotate('text', x = 7, y = .55, label = 'cleared') +
+  theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1), legend.position = c(.8, .8)) 
+
+# find overall kelp density at each site.
+kelp_sum <- urchin_total_count %>%
+  dplyr::select(date, site, juv_kelp_count, adult_kelp_count, broke_dead_kelp_count) %>%
+    rowwise() %>% # do the next functions by rows
+   dplyr::mutate(kelp_tot_count = sum(c_across(c(juv_kelp_count:broke_dead_kelp_count)), na.rm = T)) %>% # make a new col that sums the kelp count rows
+  dplyr::mutate(density = kelp_tot_count/60) %>% # add density column
+  dplyr::group_by(date, site) %>%
+  dplyr::summarize(mean_den_m2 = mean(density), sd = sd(density), n = n()) %>%
+  dplyr::mutate(site = replace(site, site == 'Fort Ross Cove', 'fort_ross'),) %>% # change type the type of kelp 
+  dplyr::mutate(site = replace(site, site == 'Timber Cove', 'timber'),) %>% # change type the type of kelp 
+  dplyr::mutate(d_b = format(date, format = "%d-%b"), site_date = paste(site, d_b))  # add a column that reformats the date to day-monthname and one that pastes d-month with site so I can reorder the factors so fort_ross October isn't before fort_ross August
+
+kelp_sum$site_date <- factor(kelp_sum$site_date, levels =c("fort_ross 10-Aug", "fort_ross 11-Aug", "fort_ross 05-Oct",  "timber 02-Oct", "timber 06-Oct")) # so the site & date axis plots with dates in the correct order
+
+ggplot(kelp_sum, aes(x = site_date, y = mean_den_m2)) +
+  scale_y_continuous(expand = c(0,0), limits = c(0, .66), breaks = seq(0, .6, .1)) +
+  labs(y = bquote(paste('Density (no. ', ~m^-2, ')')), x = 'Site & date') + # this was so hard to figure out SAVE IT!!!
+  ggtitle('Mean bull kelp density 2023') +
+  geom_errorbar(aes(ymin = mean_den_m2 - sd, ymax = mean_den_m2 + sd), width = 0) +
+  geom_col(fill = 'seagreen', width = .8) +
+  annotate('text', x = 4, y = .64, label = 'not cleared') +
+  annotate('text', x = 5, y = .64, label = 'cleared') +  
+  # annotate('text', x = seq(1:4), y = .05, label = 'No kelp observed', size = 3) +  
+  theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1))
+
+```
+
+```{r random figure about acres cleared}
+acres <- tibble(Site = c('Fort Ross','Timber'), Acres = c(0.81, 1.733))
+
+ggplot(acres, aes(x = Site, y = Acres)) +
+  geom_col(fill = 'medium purple') +
+  scale_y_continuous(expand = c(0,0), limits = c(0,2))
+
+```
+
+# Ecosystem analyses
+```{r UPC}
+# how much of each transect was bedrock, boulder, cobble, etc?
+upc_transect <- upc %>%
+  dplyr::group_by(year, month, day, site, subsite, zone, transect, category, classcode) %>%
+  dplyr::summarise(count = sum(count)) %>% # sum the three segments per transect
+  dplyr::mutate(zone = recode(zone, 'Mid' = 'M', 'Shallow' = 'S'))
+
+# check that there are about 30 observations per transect.
+upc_transect %>% 
+  dplyr::filter(category == 'SUBSTRATE') %>%
+  dplyr::group_by(year, site, subsite, zone, transect) %>% # group by replicate transect
+  dplyr::summarise(count = sum(count)) %>% 
+  dplyr::filter(!count == 30) # there are only two transects that don't have 30 observations, and it's probably because they didn't finish the transect. I'm just going to ignore that for now bc it's not too bad and I'll just change it later if needed.
+
+# substrate proportions
+upc_props <- upc_transect %>% 
+  dplyr::filter(category == 'SUBSTRATE') %>%
+  dplyr::group_by(year, site, subsite, zone, transect, classcode) %>% # group by replicate transect
+  dplyr::summarise(count = sum(count)) %>% 
+  dplyr::mutate(proportion = count / sum(count)) # I checked and all proportions add to one.
+  # now average the transects per site.
+
+upc_props %>% 
+  dplyr::group_by(site, classcode) %>% 
+  # dplyr::summarise(mean_prop = mean(proportion), n = n()) %>% 
+  ggplot(aes(x = classcode, y = proportion)) +
+  facet_wrap(~site) +
+  facet_grid(year) +
+  geom_boxplot() +
+  ggtitle('Proportion of substrates in UPC surveys')
+
+# Rugosity proportions
+upc_rugosity <- upc_transect %>%
+  filter(category == 'RELIEF')
+# order the relief factors
+upc_rugosity$classcode <- factor(upc_rugosity$classcode, levels = c('>2m', '1m-2m', '10cm-1m', '0-10cm'))
+
+upc_rugosity %>%
+  dplyr::group_by(site, classcode) %>%
+  dplyr::summarise(count = sum(count)) %>%
+  dplyr::mutate(proportion = count / sum(count)) %>%  
+  ggplot(aes(x = site, y = proportion, fill = classcode)) +
+  geom_col() +
+  scale_y_continuous(expand = c(0,0), limits = c(0,1.02))+
+  ggtitle('Total relief proportion in UPC surveys')
+
+# how much of each transect was each cover category?
+upc_transect %>%
+  filter(category == 'COVER') %>%
+  dplyr::group_by(site, classcode) %>%
+  dplyr::summarise(count = sum(count)) %>%
+  dplyr::mutate(proportion = count / sum(count)) %>%
+  ggplot(aes(x = site, y = proportion, fill = classcode)) +
+  geom_col() +
+  scale_y_continuous(expand = c(0,0), limits = c(0,1.02))+
+  ggtitle('Total cover proportion in UPC surveys')
+```
+
+This report was produced using RMarkdown in RStudio version "Cranberry Hibiscus" Release (c8fc7aee, 2024-09-16) for windows and `r version$version.string`.

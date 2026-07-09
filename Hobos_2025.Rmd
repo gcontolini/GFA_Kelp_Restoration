@@ -1,0 +1,227 @@
+---
+title: "Hobo loggers at kelp restoration sites"
+subtitle: "By Gina Contolini. Greater Farallones Association, NOAA Affiliate"
+author: "Greater Farallones and Cordell Bank National Marine Sanctuaries"
+date: "Updated on `r Sys.Date()`"
+header-includes:
+- \usepackage{float}
+- \floatplacement{figure}{H}
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(tidyverse)
+
+theme_set(theme( 
+   panel.background = element_rect(fill = 'transparent', color = NA_character_), # transparent panel background
+   plot.background = element_rect(fill = 'transparent', color = NA_character_), #transparent plot bkgd
+   panel.grid = element_line(color = 'transparent'), # remove all grid lines
+   panel.border = element_blank(),
+   axis.text = element_text(size = 13,color = 'black'), # makes axis labels bigger
+   axis.title = element_text(size = 15), #makes axis title bigger and bold
+   # axis.ticks.x = element_blank(),
+   # axis.title.y = element_text(margin=margin(0,10,0,5)), # pushes the y axis title away from the y axis labels
+   # axis.text.x = element_text(margin=margin(0,0,20,0)), #pushes the x axis title away from the x axis labels and pushes the bars down closer to the x axis labels
+   legend.title = element_text(size = 16),
+   legend.text = element_text(size = 16),
+   legend.background = element_rect(fill = 'transparent', color = NA_character_),
+   axis.line = element_line(color = 'black'),
+   plot.title = element_text(size = 15),
+   legend.key = element_blank(), # removes box around legend key
+   axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)
+))
+
+```
+
+```{r import and merge files, include = FALSE}
+# Date-times they were deployed 
+d_FRC11 <- ymd_hms('2025-08-14 17:00:00', tz = 'America/Los_Angeles') 
+d_FRC1.3.8.16.18 <- ymd_hms('2025-08-19 17:00:00', tz = 'America/Los_Angeles')
+d_TC <- ymd_hms('2025-09-03 17:00:00', tz = 'America/Los_Angeles')
+
+# Date-times they were removed
+r_FRC <- ymd_hms('2025-10-15 10:00:00', tz = 'America/Los_Angeles')
+r_TC1.3.5.5.9 <- ymd_hms('2025-10-16 10:00:00', tz = 'America/Los_Angeles')
+r_TC7 <- ymd_hms('2025-09-24 11:00:00', tz = 'America/Los_Angeles')
+
+frc_1 <- read_csv('FRC_module1_21706559.csv') %>% 
+  mutate(date_time_PDT = mdy_hms(date_time_PDT)) %>%  
+  filter(date_time_PDT > d_FRC1.3.8.16.18) %>% # only times after deployment time
+  filter(date_time_PDT < r_FRC) # only times before removal time
+
+frc_3 <- read_csv('FRC_module3_21725607.csv') %>% 
+  mutate(date_time_PDT = mdy_hms(date_time_PDT)) %>%  
+  filter(date_time_PDT > d_FRC1.3.8.16.18) %>% # only times after deployment time
+  filter(date_time_PDT < r_FRC) # only times before removal time
+
+frc_8 <- read_csv('FRC_module8_21725608.csv') %>% 
+  mutate(date_time_PDT = mdy_hms(date_time_PDT)) %>%  
+  filter(date_time_PDT > d_FRC1.3.8.16.18) %>% # only times after deployment time
+  filter(date_time_PDT < r_FRC) # only times before removal time
+
+frc_11 <- read_csv('FRC_mod11_21706561.csv') %>% 
+  mutate(date_time_PDT = mdy_hms(date_time_PDT)) %>% 
+  filter(date_time_PDT > d_FRC11) %>% # only times after deployment time
+  filter(date_time_PDT < r_FRC) # only times before removal time
+
+frc_16 <- read_csv('FRC_mod16_21725609.csv') %>% 
+  mutate(date_time_PDT = mdy_hms(date_time_PDT)) %>%  
+  filter(date_time_PDT > d_FRC1.3.8.16.18) %>% # only times after deployment time
+  filter(date_time_PDT < r_FRC) # only times before removal time
+
+frc_18 <- read_csv('FRC_mod18_21706558.csv') %>% 
+  mutate(date_time_PDT = mdy_hms(date_time_PDT)) %>%  
+  filter(date_time_PDT > d_FRC1.3.8.16.18) %>% # only times after deployment time
+  filter(date_time_PDT < r_FRC) # only times before removal time
+
+tc_3 <- read_csv('TC_module3_21725605.csv') %>% 
+  mutate(date_time_PDT = mdy_hms(date_time_PDT)) %>%  
+  filter(date_time_PDT > d_TC) %>% # only times after deployment time
+  filter(date_time_PDT < r_TC1.3.5.5.9) # only times before removal time
+
+tc_54 <- read_csv('TC_module5_21725604.csv') %>% 
+  mutate(date_time_PDT = mdy_hms(date_time_PDT)) %>%  
+  filter(date_time_PDT > d_TC) %>% # only times after deployment time
+  filter(date_time_PDT < r_TC1.3.5.5.9) # only times before removal time
+
+tc_7 <- read_csv('TC_module7_21725606.csv') %>% 
+  mutate(date_time_PDT = mdy_hms(date_time_PDT)) %>%  
+  filter(date_time_PDT > d_TC) %>% # only times after deployment time
+  filter(date_time_PDT < r_TC7) # only times before removal time
+
+tc_9 <- read_csv('TC_module9_21706560.csv') %>% 
+  mutate(date_time_PDT = mdy_hms(date_time_PDT)) %>%  
+  filter(date_time_PDT > d_TC) %>% # only times after deployment time
+  filter(date_time_PDT < r_TC1.3.5.5.9) # only times before removal time
+
+hobos <- full_join(frc_1, frc_3) %>% 
+  full_join(frc_8) %>% 
+  full_join(frc_11) %>% 
+  full_join(frc_16) %>% 
+  full_join(frc_18) %>% 
+  full_join(tc_3) %>% 
+  full_join(tc_54) %>% 
+  full_join(tc_7) %>% 
+  full_join(tc_9) %>% 
+  mutate(module = as.character(module), date = date(date_time_PDT))
+
+# hobos$month = factor(hobos$month, levels = c(8, 9, 10)) # order the months
+# hobos$day = factor(hobos$day, levels = 1:31) # order the days
+
+glimpse(hobos)
+
+# write_csv(hobos, 'HOBO_loggers_2025.csv')
+
+```
+
+```{r summarise daily temperature means, include = FALSE}
+# By module
+module_day_mean <- hobos %>% 
+  group_by(site, module, date) %>% 
+  summarise(mean_temp_C = mean(temp_C), sd_temp = sd(temp_C), mean_lux = mean(light_lux, na.rm = T), sd_lux = sd(light_lux, na.rm = T)) %>% 
+  mutate(Date = as.POSIXct(date))
+
+day_mean <- hobos %>%
+  group_by(site, date) %>% # not grouped by modules, so it's all modules combined
+  summarise(mean_temp_C = mean(temp_C), sd_temp = sd(temp_C), mean_lux = mean(light_lux, na.rm = T), sd_lux = sd(light_lux, na.rm = T)) %>% 
+  mutate(Date = as.POSIXct(date))
+
+# FRC temp
+module_day_mean %>% 
+  filter(site == 'FRC') %>% 
+  ggplot(aes(x = Date, y = mean_temp_C, color = module)) +
+  geom_errorbar(aes(ymin = mean_temp_C - sd_temp, ymax = mean_temp_C + sd_temp), width = 0) +
+  geom_point() +
+  geom_line() +
+  scale_x_datetime(breaks = '1 week') +
+  ggtitle('FRC')
+
+# FRC lux
+module_day_mean %>% 
+  filter(site == 'FRC') %>% 
+  ggplot(aes(x = Date, y = mean_lux, color = module)) +
+  geom_errorbar(aes(ymin = mean_lux - sd_lux, ymax = mean_lux + sd_lux), width = 0) +
+  geom_point() +
+  geom_line() +
+  ggtitle("FRC")
+
+day_mean %>% 
+  filter(site == 'FRC') %>% 
+  ggplot(aes(x = Date, y = mean_temp_C)) +
+  geom_errorbar(aes(ymin = mean_temp_C - sd_temp, ymax = mean_temp_C + sd_temp), width = 0) +
+  geom_point() +
+  scale_x_datetime(breaks = '1 week') +
+  geom_line() 
+
+# TC
+module_day_mean %>% 
+  filter(site == 'TC') %>% 
+  ggplot(aes(x = Date, y = mean_temp_C, color = module)) +
+  geom_errorbar(aes(ymin = mean_temp_C - sd_temp, ymax = mean_temp_C + sd_temp), width = 0) +
+  geom_point() +
+  geom_line() +
+  scale_x_datetime(breaks = '1 week') +
+  ggtitle('TC')
+
+# TC
+day_mean %>% 
+  filter(site == 'TC') %>% 
+  ggplot(aes(x = Date, y = mean_temp_C)) +
+  geom_errorbar(aes(ymin = mean_temp_C - sd_temp, ymax = mean_temp_C + sd_temp), width = 0) +
+  geom_point() +
+  scale_x_datetime(breaks = '1 week') +
+  geom_line()
+```
+
+```{r fig.cap = "Daily means of HOBO logger temperatures at two sites. Individual modules followed similar trends, so all module data is combined. Modules at FRC were  1, 3, 8, 11, 16, and 18. Modules at TC were 3, 5, 7, and 9. Error bars are SD."}
+# Compare daily means across sites
+day_mean %>% 
+  ggplot(aes(x = Date, y = mean_temp_C, color = site)) +
+  geom_errorbar(aes(ymin = mean_temp_C - sd_temp, ymax = mean_temp_C + sd_temp), width = 0) +
+  geom_point() +
+  geom_line() +
+  scale_x_datetime(breaks = '5 days')
+
+# stats
+day_mean %>% 
+  ungroup() %>% 
+  group_by(site) %>% 
+  summarize(mean_mean_temp_C = mean(mean_temp_C), SD_mean_temp_C = sd(mean_temp_C), min_mean_temp_C = min(mean_temp_C), max_mean_temp_C = max(mean_temp_C))
+
+```
+
+```{r fig.cap = 'Raw HOBO logger temperature data to date'}
+ggplot(hobos, aes(x = date_time_PDT, y = temp_C, color = site)) +
+  geom_line() +
+  scale_y_continuous(limits = c(9, 17), breaks = seq(9,17,1)) +
+  scale_x_datetime(breaks = '1 week') +
+  labs(x = 'Date')
+```
+
+```{r fig.cap = 'Raw light data at Fort Ross Cove. Data from modules 1, 11, and 18.'}
+hobos %>% 
+  filter(site == 'FRC' & !is.na(light_lux)) %>% # only timber and loggers with values
+  ggplot(aes(x = date_time_PDT, y = light_lux, color = module)) +
+  scale_x_datetime(breaks = '5 days') +
+  labs(x = 'Date') +
+  geom_line()
+```
+
+```{r fig.cap = 'Raw light data at Timber Cove. Data from module 9.'}
+hobos %>% 
+  filter(site == 'TC' & !is.na(light_lux)) %>% # only timber and loggers with values
+  ggplot(aes(x = date_time_PDT, y = light_lux, color = module)) +
+  scale_x_datetime(breaks = '5 days') +
+  labs(x = 'Date') +
+  geom_line()
+```
+
+```{r Raw HOBO logger light data, include = FALSE}
+ggplot(hobos, aes(x = date_time_PDT, y = light_lux, color = site)) +
+  geom_line() +
+  scale_x_datetime(breaks = '1 week') +
+  labs(x = 'Date')
+```

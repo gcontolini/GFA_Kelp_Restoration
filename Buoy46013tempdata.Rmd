@@ -1,0 +1,75 @@
+---
+title: "Buoy46013 temp data"
+author: "Gina Contolini"
+date: "`r Sys.Date()`"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(include = FALSE)
+library(tidyverse)
+```
+
+```{r load data}
+temps <- read_table('46013h2021.txt') %>% 
+  bind_rows(read_table('46013h2022.txt')) %>% 
+  bind_rows(read_table('46013h2023.txt')) %>% 
+  bind_rows(read_table('46013h2024.txt')) %>% 
+  bind_rows(read_table('46013h2025.txt'))
+
+names(temps) <- paste(names(temps), temps[1,], sep = '_')
+
+temps <- temps %>% 
+  filter(!MM_mo == 'mo') %>% 
+  rename(year = `#YY_#yr`, month = MM_mo, day = DD_dy, hour = hh_hr, min = mm_mn) %>% 
+  # mutate(year = as.numeric(year)) %>% 
+  mutate(across(c(year, month, day, hour, min, WDIR_degT, `WSPD_m/s`, `GST_m/s`, WVHT_m, DPD_sec, APD_sec, MWD_degT, PRES_hPa, ATMP_degC, WTMP_degC, DEWP_degC, VIS_mi, TIDE_ft), as.numeric)) %>% 
+  filter(!WTMP_degC > 50) %>% # remove values of 999 which are not valid
+  mutate(year_factor = as.factor(year))  %>% 
+  mutate(date = ymd(paste(year, month, day, sep = '-')))
+
+```
+
+```{r check for outliers and errors}
+summary(temps$WTMP_degC)
+
+ggplot(temps, aes(x = year_factor, y = WTMP_degC)) +
+  geom_boxplot() +
+  theme_bw()
+
+```
+
+```{r plot daily mean sea temps over time}
+mean_wtmps <- temps %>% 
+  group_by(year_factor, month, day) %>% 
+  summarise(mean_daily_wtmp = mean(WTMP_degC), max_wtmp = max(WTMP_degC), min_wtmp = min(WTMP_degC), sd_wtmp = sd(WTMP_degC), n = n())  %>% 
+  mutate(date = ymd(paste(year_factor, month, day, sep = '-')))
+
+ggplot(mean_wtmps, aes(x = date, y = mean_daily_wtmp)) +
+  geom_point() +
+  scale_x_date(date_breaks = '3 months') +
+  ggtitle('Mean daily water temps from Bodega buoy 46013') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1), axis.ticks.x = element_line())
+
+# close up of 2022 and 2023 data only because that's most of it
+mean_wtmps %>% 
+  filter(year_factor %in% c(2022, 2023)) %>% 
+  ggplot( aes(x = date, y = mean_daily_wtmp)) +
+  geom_errorbar(aes(ymin = mean_daily_wtmp - sd_wtmp, ymax = mean_daily_wtmp + sd_wtmp), width = 0, color = 'grey70') +
+  geom_point() +
+  scale_x_date(date_breaks = '1 months') +
+  ggtitle('Mean daily water temps from Bodega buoy 46013') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1), axis.ticks.x = element_line())
+
+# stats
+mean_wtmps %>% 
+  filter(year_factor %in% c(2022, 2023)) %>% 
+  ungroup() %>% 
+  summarise(mean_mean_daily_wtmp = mean(mean_daily_wtmp), SD_mean_daily_wtmp = sd(mean_daily_wtmp), min_mean_daily_wtmp = min(mean_daily_wtmp), max_mean_daily_wtmp = max(mean_daily_wtmp))
+
+```
+

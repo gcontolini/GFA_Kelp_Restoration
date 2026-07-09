@@ -1,0 +1,184 @@
+---
+title: "tidy_tables"
+author: "Gina Contolini"
+date: "`r Sys.Date()`"
+output: word_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(tidyverse) # tidy code packages
+library(knitr) # has the kable function for tables
+library(kableExtra) # has advanced table-making functions and you can pipe
+# package that is not really helpful yet because you can't write it to a Word doc, but they will likely support that soon:
+library(gt) # grammar of tables package. As of December 2023, this package was built primarily for HTML output, but it also works in PDF output. However, the formatting goes away in a Word document output.
+library(flextable) # another table making package to try.
+library(broom) # formats model outputs as tidy tables.
+
+# Create data frame AKA tibble
+den_tibble <- tibble(site = c('Fort Ross','Timber','Ocean','Stillwater'), urchin_den_m2 = c(30.284, 20.954, 11.125, 12.017))
+```
+
+# Package `flextable`
+## This is my recommendation for ONMS reports because it can render as a fully formatted, writable table in a Word document.
+Pros:
+
+* Can be rendered in Microsoft Word in a formatted, writable table 
+
+Cons:
+
+* The code to make a flextable is not super concise or intuitive
+
+```{r flextable example}
+# Demonstration here: https://ardata-fr.github.io/flextable-book/
+
+# To do list:
+## Change table width
+## Change decimal places
+## Try with complex urchin landings data to style different columns
+
+# Notes
+## Is it intuitive and easy to use for beginners? Not really but at least it does everything.
+## How does it knit to Word? Well! Keeps all formatting so far!
+## Can I change the font? YES!
+
+# First, set formatting for all the tables you are going to make. You can also change individual tables, but if you like to keep your formatting consistent, this is faster and easier. I set these formats according to the NOAA conservation science series guidelines (https://sanctuaries.noaa.gov/science/conservation/preparation.html)
+
+set_flextable_defaults(
+  digits = 2, # can't get digits to change
+  font.size = 10, 
+  font.family = "Arial", # changes the font for all further tables 
+  font.color = "black",
+  table.layout = "autofit", # automatically adjusts table width
+  border.color = "black")
+
+# Now view the table, and the above formatting will apply.
+
+flextable(den_tibble) |>
+  labelizor(part = "header", labels = c("site" = "Site")) |> #change col name
+ compose(i = 1, j = "urchin_den_m2", part = "header",
+  value = as_paragraph("Urchin density (# m", as_sup("–2"),")")  # Change the other column name, including superscript format for the density unit
+) |>
+  colformat_double(digits = 2) # I couldn't figure out how to get the default digits to work, so I just did it here.
+
+```
+
+# Package `broom`
+This package formats model outputs into presentable tables. Use in conjunction with flextable.
+
+```{r broom package example}
+# model some data
+data <- read_csv('Dockside Urchin Monitoring datasheet_GFA2023 - urchin_entry.csv')
+purple_urchins <- data %>% 
+  filter(species == 'purple')
+
+# visualize the data
+ggplot(purple_urchins, aes(x = diameter_mm, y = sqrt(wet_weight_g))) +
+  geom_point()
+
+# create summary table
+summary(lm(diameter_mm ~ sqrt(wet_weight_g), data = purple_urchins)) |> # this is the model summary
+  tidy() |> # this is from the broom package. it makes the model summary into a data frame
+  mutate(term = c('Intercept', 'Sqrt(wet weight [g])')) |> # rename variables so they look nicer in a table.
+  flextable() |> # this makes the data frame into a presentable, formatted table
+  colformat_double(digits = 2) |> # limits numeric digits to 4
+  labelizor(part = "header", labels = c("term" = "Term", "estimate" = "Estimate", "std.error" = "Standard error", "statistic" = "Statistic", "p.value"= "P-value")) #change col names
+
+```
+
+# Knitr table
+```{r kable table, results = 'asis'}
+# kable tutorial: https://bookdown.org/yihui/rmarkdown-cookbook/kable.html
+
+# To do list:
+## make the kable not full width
+
+# for some reason none of the kable functions below show me a table in the RStudio viewer, which is pretty lame and makes it not helpful. It also doesn't work in Word.
+knitr::kable(den_tibble
+        , format = 'simple'
+        , digits = 1
+        , caption = "Urchin densities at kelp restoration sites in 2023"
+        , col.names = c('Site','Urchin density (#/m2)') #not sure how to make superscript yet
+        , align = c('lr') # aligns the first column left and the second column right, but that is already how it is; this is just an example
+        , full_width = FALSE # If true, the table is the full width of the page. This is not currently working.
+             ) 
+# using knitr, the text (left) and number (right) alignments already conform with ONMS standards! 
+# Default for missing values is NA
+```
+
+## kableExtra adds formatting options to a table made with knitr
+
+```{r adding kableExtra for html tables}
+# Produces an error when knitted to Word and halts the knitting of everything else.
+
+# kable(den_tibble
+#       # , booktabs = TRUE # This is for Latex formatting.
+#       , digits = 1
+#       , caption = "Urchin densities at kelp restoration sites in 2023"
+#       , col.names = c('Site','Urchin density (#/m2)') #not sure how to make superscript yet
+#       , align = c('lr') # aligns the first column left and the second column right, but that is already how it is; this is just an example
+#       , full_width = FALSE # If true, the table is the full width of the page. It doesn't seem to be working.
+#            )  %>% 
+#   kable_styling(font_size = 10)
+
+# You can probably just copy and paste this table into a Word document.
+```
+
+# GT table
+## Urchin densities
+```{r gt table}
+# Create table using "gt" package. "gt" stands for "grammar of tables."
+# This package will write to Word, but not with formatting. However, you can write to HTML and copy it with all the formatting to Word.
+
+# To do list:
+
+den_tibble |> #note the different pipe command. %>% also works. 
+  gt() |> #this makes it into a tidy "display" table, e.g., formatted for a report, not for data analysis.
+  tab_header(title = "Urchin densities at kelp restoration sites 2023") |>
+  cols_label(site = "Site", urchin_den_m2 = md("Urchin density (m^2^)")) |> # the superscript only works in html for now
+  opt_table_font(font = "Georgia") #|> # changes the font to Georgia
+  # tab_source_note(source_note = "Source: Greater Farallones Association and Greater Farallones \n and Cordell Bank National Marine Sanctuaries unpublished data") # since this footnote is so long, it makes the table extremely wide.
+
+```
+
+## Fake data table
+```{r example using gt fake data}
+# Example from website: https://posit.co/blog/great-looking-tables-gt-0-2/
+exibble |> 
+  select(!c(row, group, datetime)) |>
+  gt()  %>%
+  tab_header( # add a table header
+    title = md("This is the `exibble` dataset in **gt**"), # this is the table title
+    subtitle = "It is one of six datasets in the package" # this is the table subtitle
+  ) %>%
+  tab_source_note(md("More information is available at `?exibble`.")) %>%
+  cols_label(num = "Number", char = 'Fruit', fctr = 'Factor', date = 'Date', time = 'Time', currency = 'Price') %>%
+  fmt_number(columns = num, decimals = 2) %>% # display numbers with exactly 2 decimal places 
+  fmt_date(columns = date, date_style = 6) %>% # show date as Month, Day Year (style 6)
+  fmt_time(columns = time, time_style = 4) %>% # show time as HH:MM A/PM
+  fmt_currency(columns = currency, currency = "EUR") %>% # show values in Euro currency
+  cols_align(align ='center') # center text in the columns 
+```
+
+# gtsummary to get a table showing model output
+```{r example 3; linear model output}
+
+
+# model the data using linear model
+library(gtsummary) # presentation-ready data summary and analytic results tables. Does not work in Word output, but it does in HTML and PDF.
+# library(parameters) # it says it is required for broom.helpers::tidy_parameters()
+tbl_regression(summary(lm(diameter_mm ~ sqrt(wet_weight_g), data = purple_urchins))) %>%
+  as_gt() %>%
+  tab_header( # add a table header
+    title = "Table 2. Linear model summary of purple sea urchin diameter", # this is the table title
+    subtitle = "") %>% # this is the table subtitle 
+  tab_source_note("Residual standard error: 2.861 on 239 degrees of freedom.
+Multiple R-squared:  0.9447,	Adjusted R-squared:  0.9445") 
+```
+
+
+
+
+

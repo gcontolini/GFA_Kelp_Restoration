@@ -1,0 +1,972 @@
+---
+title: "Preliminary summary of Urchin Measurements from Sonoma County"
+subtitle: "By Gina Contolini. Greater Farallones Association, NOAA Affiliate"
+author: "Greater Farallones and Cordell Bank National Marine Sanctuaries"
+date: "Updated on `r Sys.Date()`"
+header-includes:
+- \usepackage{pdflscape}
+- \newcommand{\blandscape}{\begin{landscape}}
+- \newcommand{\elandscape}{\end{landscape}}
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE, echo = FALSE, message = FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+# the shortcut for pipe is ctrl+shift+M
+#### Install and load packages ####
+library(car) # companion to applied regression
+library(ggpubr) # plot aesthetics
+library(tidyverse) # all tidyverse packages including tidyr, dplyr, and ggplot2
+library(flextable)
+library(RColorBrewer)
+library(bookdown) #automatically numbers tables and figures. Figures must be in be in a separate chunk with the option {r fig.cap = "Title"}
+
+#### Create standard error function ####
+se <- function(x){
+   sd(x) / sqrt(length(x))
+}
+
+#### Create plot theme ####
+theme_set(theme( 
+   panel.background = element_rect(fill = 'transparent', color = NA_character_), # transparent panel background
+   plot.background = element_rect(fill = 'transparent', color = NA_character_), #transparent plot bkgd
+   panel.grid = element_line(color = 'transparent'), # remove all grid lines
+   panel.border = element_blank(),
+   axis.text = element_text(size = 15,color = 'black'), # makes axis labels bigger
+   axis.title = element_text(size = 20), #makes axis title bigger and bold
+   axis.ticks.x = element_blank(),
+   # axis.title.y = element_text(margin=margin(0,10,0,5)), # pushes the y axis title away from the y axis labels
+   # axis.text.x = element_text(margin=margin(0,0,20,0)), #pushes the x axis title away from the x axis labels and pushes the bars down closer to the x axis labels
+   legend.title = element_text(size = 20),
+   legend.text = element_text(size = 18),
+   legend.background = element_rect(fill = 'transparent', color = NA_character_),
+   axis.line = element_line(color = 'black'),
+   plot.title = element_text(size = 20),
+   legend.key = element_rect(fill = 'transparent'),
+   strip.text.x = element_text(size = 18)
+   # panel.grid.minor.x = element_blank(), # remove minor x axis grid line
+   # panel.grid.major.x = element_blank(), # remove major x axis grid line
+))
+
+transparent_theme <- theme(
+    panel.background = element_rect(fill='transparent', color = NA_character_), #transparent panel bg. the NA_character_ removes the box
+    plot.background = element_rect(fill='transparent', color = NA), #transparent plot bg
+    panel.grid.major = element_blank(), #remove major gridlines
+    panel.grid.minor = element_blank(), #remove minor gridlines
+    legend.background = element_rect(fill='transparent', color = NA_character_), #transparent legend bg
+    legend.box.background = element_rect(fill='transparent', color = NA_character_) #  transparent legend panel
+  ) # to print a transparent bg plot, use this theme and ggsave("plot.png", plot, bg = "transparent")
+
+urchin_purple_light = 'orchid2'
+urchin_purple_dark = 'mediumpurple1'
+gonad_light = 'khaki1'
+gonad_dark = 'darkgoldenrod1'
+```
+
+```{r read and clean up data}
+bycatch <- read_csv('Dockside monitoring datasheet GFA - byctach_entry.csv',
+    col_types = list(
+       landing_date = readr::col_date(format = "%Y-%b-%d"),
+       sampling_date = readr::col_date(format = "%Y-%b-%d"),
+       grams = readr::col_number() 
+       )
+)
+
+dockside <- read_csv('Dockside monitoring datasheet GFA - urchin_entry.csv') %>% # last downloaded 2026-01-23
+  dplyr::mutate(datasheet_date = ymd(datasheet_date), landing_date = ymd(landing_date)) %>% 
+  dplyr::mutate(year = as.factor(year(datasheet_date))) %>% 
+  dplyr::mutate(month = month(datasheet_date)) %>% 
+  dplyr::mutate(gonad_weight_g = as.numeric(gonad_weight_g)) %>% # make gonad weight numeric. It has "na" values that were read as characters.
+  dplyr::mutate(site = replace(site, site == 'fort_ross', 'Fort Ross')) %>%
+  dplyr::mutate(site = replace(site, site == 'timber', 'Timber')) %>% 
+  dplyr::mutate(gonad_index = 100 * (gonad_weight_g / wet_weight_g))
+
+# remove three outliers that were identified with the histograms below.
+dockside = dockside[-which(dockside$height_mm == 42.73 & dockside$datasheet_date == '2023-09-16'),] # removes this row with unrealistically large height
+dockside = dockside[-which(dockside$height_mm == 51.69 & dockside$datasheet_date == '2023-10-02'),] # removes another row with unrealistically large height
+dockside = dockside[-which(dockside$height_mm == 4.69 & dockside$datasheet_date == '2023-10-02'),] # removes this row with unrealistically small height
+# could consider removing the 10 urchins not randomly selected on 2025 July 15, but 10 is not that many. I would only want to remove them from the size analysis I think, not the gonad analysis. hm. 
+dockside_unbias <- dockside %>% 
+  filter(!notes %in% c("F, Selected (unbiase)", "M, Selected (unbiase)", "Selected (unbiase)"))
+
+# Eventually should do something about the stress spawning. Also, I think we should adjust our methods to include  blotting gonads dry first... but we haven't been doing that, so it would alter the results. So maybe not.
+```
+
+```{r summary of effort, include = FALSE}
+# how many urchins did we weigh gonads for
+dockside %>% 
+  dplyr::filter(!is.na(gonad_weight_g)) %>% 
+  dplyr::mutate(year = as.factor(year(datasheet_date))) %>% 
+  dplyr::group_by(year, site, month) %>% 
+  dplyr::summarise(count = n()) %>% 
+  flextable() %>% 
+  flextable::set_caption("Count of urchin GSI measured per year, month, and site")
+
+dockside %>% 
+  dplyr::filter(!is.na(gonad_weight_g)) %>% 
+  dplyr::filter(!site %in% c('fort_ross_kelp_bed', 'ocean')) %>% 
+  dplyr::mutate(year = as.factor(year(datasheet_date))) %>% 
+  dplyr::group_by(year, site, species) %>% 
+  dplyr::summarise(count = n()) %>% 
+  flextable() %>% 
+  flextable::set_caption("Count of urchin GSI measured per year and site")
+```
+
+```{r urchin size data exploration, include = FALSE}
+# check distributions of all continuous variables grouped by each categorical variable.
+# First filter for only purple urchins
+dockside_nokelpbed <- dockside %>% 
+  dplyr::filter(!site == "fort_ross_kelp_bed")  # Remove the kelp bed site
+
+docksidep <- dockside %>% 
+  dplyr::filter(species == 'purple') #the p stands for purple
+
+docksidepn <- docksidep %>% 
+  filter(!site == "fort_ross_kelp_bed") # just purples and no kelp bed. n stands for no kelp bed
+                
+docksidec <- dockside %>% # c stands for commercial
+  dplyr::filter(vessel %in% c('Janae', 'Guardian', 'Omega'))
+
+dockside_cpn <- docksidepn %>% # only purple and no kelp bed
+  filter(vessel %in% c('Janae', 'Guardian', 'Omega')) %>% # and only from commercial divers
+  mutate(size_cm = diameter_mm / 10) # to compare directly to the subtidal sizes
+
+dockside_spn <- docksidepn %>% # only purple and no kelp bed
+  filter(!vessel %in% c('Janae', 'Guardian', 'Omega')) %>% # and only from SCIENCE divers
+  mutate(size_cm = diameter_mm / 10) # to compare directly to the subtidal sizes
+
+## Purple urchin diameters
+ggplot(dockside, aes(x = diameter_mm, fill = site)) +
+  geom_histogram(color = 'black', binwidth = 1) + #geom_freqpoly makes it a line instead of bars
+  facet_grid('site') + #facet_wrap() is the same but perpendicular
+  scale_y_continuous(expand = c(0,0), breaks = seq(0,25,5), limits = c(0,16)) +
+  scale_x_continuous(breaks = seq(0,100,5)) +
+  # scale_fill_manual(values = c(urchin_purple_dark, urchin_purple_light,'forestgreen')) +
+  labs(x = 'Urchin diameter (mm)', y = 'Count') +
+  ggtitle("Urchin diameter from all dissections") +
+  theme_bw() +
+  theme(legend.position = 'none')
+
+# Table of urchin diameters
+dockside %>% 
+  dplyr::group_by(site, year, species) %>% 
+  dplyr::summarise(mean_diam = mean(diameter_mm/10, na.rm = T), sd_diam = sd(diameter_mm/10, na.rm = T), median_diam = median(diameter_mm/10, na.rm = T), n = n()) %>% 
+  flextable() %>% 
+  flextable::set_caption("Summary of dockside purple urchin diameters (cm)")
+
+# Table of urchin weights
+dockside %>% 
+  dplyr::filter(!is.na(wet_weight_g)) %>% 
+  dplyr::group_by(site, year, species) %>% 
+  dplyr::summarise(mean_g = mean(wet_weight_g, na.rm = T), sd_g = sd(wet_weight_g, na.rm = T), median_g = median(wet_weight_g, na.rm = T), n = n()) %>% 
+  flextable() %>% 
+  flextable::set_caption("Summary of dockside purple urchin weights (g)")
+
+# Boxplot of purple urchin diameters over years
+ggplot(docksidep[-which(docksidep$site == 'fort_ross_kelp_bed'),], aes(x = site, y = diameter_mm, fill = year)) +
+  geom_boxplot() +
+  ggtitle("Urchin diameter from all subsites") +
+  theme_bw()
+
+# Boxplot of urchin diameters just from commercial landings
+ggplot(docksidec, aes(x = site, y = diameter_mm, fill = year)) +
+  geom_boxplot()+
+  ggtitle("Urchin diameter from commercial landings")+
+  theme_bw()
+  
+## Histogram of purple urchin heights
+ggplot(docksidec, aes(x = height_mm, fill = site)) +
+  geom_histogram(color = 'black', binwidth = 1) +
+  facet_grid('site') +
+  scale_y_continuous(expand = c(0,0), breaks = seq(0,40,5), limits = c(0,21)) +
+  scale_x_continuous(breaks = seq(0,60,5)) +
+  scale_fill_manual(values = c('purple4', 'purple1', 'forestgreen')) +
+  labs(y = 'Count', x = 'Urchin height (mm)') +
+  ggtitle("Histogram of purple urchin heights from landings") + 
+  theme_bw() +
+  theme(legend.position = 'none')
+
+## Histogram of purple urchin wet weights
+ggplot(docksidep, aes(x = wet_weight_g, fill = site)) +
+  geom_histogram(color = 'black', binwidth = 2) +
+  facet_grid('site') +
+  scale_y_continuous(expand = c(0,0), breaks = seq(0,14,2), limits = c(0,13)) +
+  scale_x_continuous(expand = c(0,0)) +
+  # scale_fill_manual(values = c(urchin_purple_dark, urchin_purple_light,'forestgreen')) +
+  labs(x = 'Urchin wet weight (g)', y = 'Count') +
+  ggtitle("Histogram of purple urchin wet weights") +
+  theme_bw() +
+  theme(legend.position = 'none')
+### The >200 g urchin was just really big, that's probably not a typo
+
+## Purple urchin height x diameter relationship
+ggplot(docksidep, aes(x = diameter_mm, y = height_mm, color = site)) +
+  geom_smooth(method = 'lm') +
+  geom_point(alpha = .6) + # make them transparent
+  scale_x_continuous(breaks = seq(0,100,5)) +
+  scale_y_continuous(breaks = seq(0,60,5)) +
+  # scale_color_manual(values = c(urchin_purple_dark, urchin_purple_light, 'forestgreen')) +
+  labs(y = 'Height (mm)', x = 'Diameter (mm)') +
+  ggtitle('Purple urchin height vs. diameter') +
+  theme_bw()
+
+## Purple urchin wet weight x diameter relationship
+ggplot(docksidep, aes(x = diameter_mm, y = wet_weight_g, color = site)) +
+  geom_point(alpha = .6) +
+  # scale_color_manual(values = c(urchin_purple_dark, urchin_purple_light, 'forestgreen')) +
+  labs(y = 'Wet weight (g)', x = 'Diameter (mm)') +
+  ggtitle('Purple urchin wet weight vs. diameter') +
+  theme_bw() +
+  theme(legend.position = c(x = .2, y = .8))
+### well okay that >200 g urchin fits the relationship, so I guess I'll keep it!
+
+## Purple urchin gonad index
+ggplot(docksidep, aes(x = gonad_index, fill = site)) +
+  geom_histogram(color = 'black') +
+  facet_grid('site') +
+  scale_y_continuous(expand = c(0,0)) +
+  # scale_fill_manual(values = c(urchin_purple_dark, urchin_purple_light,'forestgreen')) +
+  theme_bw() +
+  theme(legend.position = 'none')
+
+# boxplots of purple urchin gonad index per FRC, RC, and FRC kelp bed, all years
+ggplot(docksidep, aes(x = site, y = gonad_index, fill = site)) +
+  geom_boxplot() +
+  # scale_fill_manual(values = c(gonad_dark, gonad_light,'forestgreen')) +
+  scale_y_continuous(breaks = seq(0,30,2.5)) +
+  labs(y = bquote(paste('        Gonad index \n(100 * gonad g * tot. ', ~g^-1, ')')), x = ' ') + # this was so hard to figure out SAVE IT!!!
+  theme(legend.position = 'none', plot.margin = margin(l = 20), axis.title = element_text(size = 18), axis.text.y = element_text(size = 12)) 
+
+# boxplots of purple urchin gonad index per FRC, RC, and FRC kelp bed, compare years
+ggplot(docksidep, aes(x = year, y = gonad_index, fill = site)) +
+  facet_wrap(~site) + 
+  geom_boxplot() +
+  # scale_fill_manual(values = c(gonad_dark, gonad_light,'forestgreen')) +
+  scale_y_continuous(breaks = seq(0, 30, 2.5)) +
+  labs(y = bquote(paste('        Gonad index \n(100 * gonad g * tot. ', ~g^-1, ')')), x = ' ') + # this was so hard to figure out SAVE IT!!!
+  theme(legend.position = 'none', plot.margin = margin(l = 20), axis.title = element_text(size = 18), axis.text.x = element_text(size = 10), strip.text.x = element_text(size = 14), axis.text.y = element_text(size = 12))
+  
+# How has mean urchin weight and size changed per site over time?
+docksidep %>% 
+  filter(!is.na(diameter_mm)) %>% 
+  group_by(site, year) %>% 
+  ggplot(aes(x = year, y = diameter_mm, fill = site)) +
+  geom_boxplot() +
+  ggtitle('Sizes of purple urchins over time')
+
+docksidep %>% 
+  filter(!is.na(diameter_mm)) %>% 
+  group_by(site, year) %>% 
+  summarise(mean_diam = mean(diameter_mm), sd_diam = sd(diameter_mm), n = n()) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = year, y = mean_diam, color = site)) +
+  geom_errorbar(aes(ymin = mean_diam - sd_diam, ymax = mean_diam + sd_diam, width = 0), position = position_dodge(0.3)) +
+  geom_point(size = 4, position = position_dodge(0.3)) +
+  geom_line(aes(group = site, year), position = position_dodge(0.3)) +
+  ggtitle('Mean urchin diameters over time')
+
+docksidep %>% 
+  filter(!is.na(wet_weight_g)) %>% 
+  group_by(site, year) %>% 
+  ggplot(aes(x = year, y = wet_weight_g, fill = site)) +
+  geom_boxplot() +
+  ggtitle('Urchin wet weights over time')
+
+docksidep %>% 
+  filter(!is.na(wet_weight_g)) %>% 
+  group_by(site, year) %>% 
+  summarise(mean_g = mean(wet_weight_g), sd_g = sd(wet_weight_g), n = n()) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = year, y = mean_g, color = site)) +
+  geom_errorbar(aes(ymin = mean_g - sd_g, ymax = mean_g + sd_g, width = 0), position = position_dodge(0.3)) +
+  geom_point(size = 4, position = position_dodge(0.3)) +
+  geom_line(aes(group = site, year), position = position_dodge(0.3)) +
+  ggtitle('Mean urchin weights over time')
+
+# For manuscript. just commercially landed purple urchins at four sites.
+## table showing the actual values
+dockside_cpn_medians <- dockside_cpn %>% 
+  group_by(site, year) %>% 
+  summarise(median = median(size_cm, na.rm = T), n = n()) %>% 
+  mutate(y_pos = median + .4)
+
+ggplot(dockside_cpn, aes(x = year, y = size_cm)) +
+  facet_grid(~site) +
+  geom_boxplot() +
+  scale_y_continuous(breaks = seq(0,10,1)) +
+  geom_text(data = dockside_cpn_medians, aes(label = median), y = dockside_cpn_medians$y_pos, parse = TRUE) +
+  labs(y = 'Diameter (cm)', x = 'Year') +
+  theme(strip.background = element_rect(fill = 'mediumpurple1'), strip.text = element_text(size = 20))
+
+# How does this compare to what SCIENCE divers collected and measured in the lab?
+dockside_spn_medians <- dockside_spn %>% 
+  group_by(site, year) %>% 
+  summarise(median = median(size_cm, na.rm = T), n = n()) %>% 
+  mutate(y_pos = median + .4)
+
+ggplot(dockside_spn, aes(x = year, y = size_cm)) +
+  facet_grid(~site) +
+  geom_boxplot() +
+  scale_y_continuous(breaks = seq(0,10,1)) +
+  geom_text(data = dockside_spn_medians, aes(label = median), y = dockside_spn_medians$y_pos, parse = TRUE) +
+  labs(y = 'Diameter (cm)', x = 'Year') +
+  theme(strip.background = element_rect(fill = 'mediumpurple1'), strip.text = element_text(size = 20))
+  
+
+```
+
+```{r mean urchin sizes, include = FALSE}
+## Mean purple urchin diameter by site
+docksidep %>%
+  dplyr::group_by(site) %>%
+  dplyr::summarise(mean_diameter_mm = mean(diameter_mm, na.rm = T), sd = sd(diameter_mm, na.rm = T), n = n()) %>%
+  ggplot(aes(x = site, y = mean_diameter_mm, color = site)) +
+  geom_errorbar(aes(ymin = mean_diameter_mm - sd, ymax = mean_diameter_mm + sd), width = 0) +
+  geom_point(size = 4) +
+  # scale_fill_manual(values = c(urchin_purple_dark,  urchin_purple_light, 'forestgreen')) +
+  scale_y_continuous(expand = c(0,0), limits = c(0, 65), breaks = seq(0, 65, 10)) +
+  labs(x = "Site", y = 'Diameter (mm)') +
+  ggtitle('Mean purple urchin diameter') +
+  transparent_theme + theme(legend.position = 'blank')
+
+## Mean wet weight by site
+docksidep %>%
+  dplyr::group_by(site) %>%
+  dplyr::summarise(mean_wet_weight = mean(wet_weight_g, na.rm = T), sd = sd(wet_weight_g, na.rm = T), n = n()) %>%
+  ggplot(aes(x = site, y = mean_wet_weight, color = site)) +
+  geom_errorbar(aes(ymin = mean_wet_weight - sd, ymax = mean_wet_weight + sd), width = 0) +
+  geom_point(size = 4) +
+  scale_y_continuous(expand = c(0,0), limits = c(0, 100), breaks = seq(0, 100, 10)) +
+  # scale_fill_manual(values = c(urchin_purple_dark, urchin_purple_light, 'forestgreen')) +
+  labs(y = "Wet weight (g)", x = "Site") +
+  ggtitle('Mean purple urchin wet weight') +
+  transparent_theme + theme(legend.position = 'none')
+
+# Mean urchin diameter over time by site
+
+docksidep_dgsum <- docksidec %>% 
+  dplyr::group_by(site, datasheet_date, vessel) %>%
+  # dplyr::filter(!is.na(gonad_index)) %>% #exclude rows with NA gonad index so sample size is counted correctly. but it would only be correct for gonad index, not diameter.
+  dplyr::summarize(mean_gonad_index = mean(gonad_index, na.rm = T), 
+                   sd_gonad_index = sd(gonad_index, na.rm = T),
+                   mean_diam = mean(diameter_mm, na.rm = T),
+                   sd_diam = sd(diameter_mm, na.rm = T),
+                   n = n()) %>% # I guess n just shows the number of rows, not the number of rows used in the summarizing calculations. So even though there are only 35 rows with gonad_index data to calculate the mean, there are an additional 25 rows of NA, so n() displays 60.
+  dplyr::mutate(year = year(datasheet_date)) %>% 
+  dplyr::mutate(year = factor(year, levels = unique(year))) # make year factor for plotting
+
+ggplot(docksidep_dgsum, aes(x = datasheet_date, y = mean_diam, color = site)) +
+  geom_errorbar(aes(ymin = mean_diam - sd_diam, ymax = mean_diam + sd_diam), position = position_dodge(1), width = 0) +
+  geom_point(size = 2, position = position_dodge(1), alpha = .6) +
+  scale_y_continuous(limits = c(20, 71), ) +
+  scale_x_date(breaks = '1 month', date_labels = '%Y %b') + 
+  # scale_color_manual(values = c(urchin_purple_dark, urchin_purple_light)) +
+  labs(x = 'Date', y = 'Diameter (mm)') +
+  ggtitle('Mean purple urchin diameter by landing date and site') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+```
+
+```{r urchin gonad data exploration, include = FALSE}
+
+## Purple urchin gonad weight
+ggplot(docksidepn, aes(x = gonad_weight_g, fill = site)) +
+  geom_histogram(color = 'black', binwidth = .2) +
+  facet_grid('site') +
+  # scale_y_continuous(expand = c(0,0), breaks = seq(0,35,5), limits = c(0,35)) +
+  scale_x_continuous(expand = c(0,0), breaks = seq(0,20,2), limits = c(0,18)) +
+  # scale_fill_manual(values = c('orange4','orange')) +
+  labs(x = 'Gonad wet weight (g)', y = 'Count') +
+  ggtitle("Histogram of purple urchin gonad wet weights from landings") +
+  theme(legend.position = 'none')
+```
+
+```{r mean urchin gonads, include = FALSE}
+# Mean gonad index by site
+(mean_gonad_index_site <- docksidepn %>%
+  dplyr::filter(!is.na(gonad_index)) %>% # remove nas for gonad index so the sample size calculates correctly
+  dplyr::group_by(site) %>%
+  dplyr::summarise(mean_gonad_index = mean(gonad_index, na.rm = T), sd = sd(gonad_index, na.rm = T), n = n()) %>%
+  ggplot(aes(x = site, y = mean_gonad_index, color = site)) +
+  geom_errorbar(aes(ymin = mean_gonad_index - sd, ymax = mean_gonad_index + sd), width = 0) +
+  geom_point(size = 4) +
+  # scale_fill_manual(values = c(gonad_dark, gonad_light)) +
+  # scale_y_continuous(expand = c(0,0), limits = c(0, .08), breaks = seq(0, .08, .01)) +
+  labs(y = "Gonad index (100 * tot. g / gonad g)", x = "Site") +
+  ggtitle('Mean purple urchin gonad index') +
+  transparent_theme + theme(legend.position = 'none')
+)
+
+# Mean gonad index over time by site
+(mean_gonad_index_site_time <- ggplot(docksidep_dgsum, aes(x = datasheet_date, y = mean_gonad_index, color = site)) +
+  geom_errorbar(aes(ymin = mean_gonad_index - sd_gonad_index, ymax = mean_gonad_index + sd_gonad_index), position = position_dodge(width = 1), width = 0) +
+  geom_point(size = 2, position = position_dodge(width = 1)) +
+  scale_x_date(breaks = '2 months', date_labels = '%b') + 
+  # scale_y_continuous(limits = c(-0.005, 0.101)) +
+  # scale_color_manual(values = c(gonad_dark, gonad_light)) +
+  labs(y = bquote(paste('Gonad index (gonad g * tot. ', ~g^-1, ')')), x = 'Date') + # this was so hard to figure out SAVE IT!!!
+  # ggtitle('Mean purple urchin gonad index') +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1), axis.title = element_text(size = 12)) +
+  transparent_theme
+)
+
+# Boxplots purple urchin gonad index per site and year
+
+mediansgi <- docksidepn %>% 
+  dplyr::group_by(year, site) %>% 
+  dplyr::summarise(median_gi = median(gonad_index, na.rm = T), N = n()) %>% 
+  dplyr::mutate(y_pos = median_gi + .9) %>% 
+  dplyr::mutate(median_gi = format(round(median_gi, 2), nsmall = 2))
+
+# diameters
+diam_sum <- dockside %>% 
+  filter(site %in% c('Fort Ross', 'Timber')) %>% 
+  filter(!is.na(diameter_mm)) %>% 
+  group_by(year, site, species) %>% 
+  summarise(mean_diam = mean(diameter_mm), sd_diam = sd(diameter_mm), n_diam = n())
+
+# GSI
+gsi_sum <- dockside %>% 
+  filter(site %in% c('Fort Ross', 'Timber')) %>% 
+  filter(!is.na(gonad_index)) %>% 
+  group_by(year, site, species) %>% 
+  summarise(mean_gsi = mean(gonad_index), sd_gsi = sd(gonad_index), n_gsi = n())
+
+left_join(diam_sum, gsi_sum) %>% 
+  flextable()
+  
+```
+
+# Figures  
+
+```{r boxplot gonad index by site and year, fig.cap = "Boxplots of purple urchin gonad index at two sites by year. Labels on boxes are medians. Sample sizes are 132, 74, 90, and 105, respectively"}
+
+ggplot(docksidepn, aes(x = year, y = gonad_index, fill = site)) +
+  facet_wrap(~site) +
+  geom_boxplot() +
+  # scale_fill_manual(values = c(gonad_dark, gonad_light)) +
+  geom_text(data = mediansgi, aes(label = median_gi), y = mediansgi$y_pos, parse = TRUE) +
+  labs(y = bquote(paste('       Gonad index \n(100 * gonad g * tot. ', ~g^-1, ')')), x = ' ') + # this was so hard to figure out SAVE IT!!!
+  # ggtitle('Mean purple urchin gonad index') +
+  theme(legend.position = 'none', axis.title = element_text(size = 17), plot.margin = margin(l = 13)) +
+  transparent_theme
+
+# find sample size for above figure
+sample.size1 <- docksidepn %>% 
+  dplyr::filter(!is.na(gonad_index)) %>% 
+  dplyr::group_by(year, site) %>% 
+  dplyr::summarise(median(gonad_index), n = n())
+```
+
+```{r boxplots of GSI by month, fig.cap = "Boxplots of urchin gonad index per site per sampling date. Sample size between 15 and 30 for each date"}
+# boxplot gonad index over time by site.
+docksidep_nogina <- docksidepn %>% 
+  dplyr::mutate(factor_date = format(datasheet_date, format = "%Y-%b")) %>% # format dates in new col
+  dplyr::mutate(factor_date = factor(factor_date, levels = unique(factor_date))) %>%  # make date a factor for plotting not on a continuous date axis
+  dplyr::filter(!is.na(gonad_index))
+
+NDs <- docksidep_nogina %>% 
+  dplyr::group_by(site, datasheet_date) %>% 
+  dplyr::summarise(median = median(gonad_index), n = n()) %>% 
+  dplyr::ungroup() %>% # OMG YOU HAVE TO UNGROUP IT !!!! :(((
+  dplyr::mutate(letters = NA) %>% 
+  tidyr::complete(site, datasheet_date) %>% 
+  # dplyr::filter(!site == 'fort_ross_kelp_bed') %>% 
+  dplyr::mutate(factor_date = format(datasheet_date, format = "%Y-%b")) %>% # format dates in new col
+  dplyr::mutate(factor_date = factor(factor_date, levels = unique(factor_date)))  # make date a factor for plotting not on a continuous date axis
+
+NDs$letters[which(is.na(NDs$median))] = 'ND' # assign ND rows
+
+# Boxplots of GSI over months
+ggplot(docksidep_nogina, aes(x = factor_date, y = gonad_index, fill = site)) +
+  facet_wrap(~site) +
+  geom_boxplot() +
+  # scale_fill_manual(values = c(gonad_dark, gonad_light)) +
+  # geom_text(data = NDs, aes(label = letters), y = .5, parse = TRUE) +
+  labs(y = bquote(paste('        Gonad index \n(100 * gonad g * tot. ', ~g^-1, ')')), x = 'Date') + # this was so hard to figure out SAVE IT!!!
+  # ggtitle('Mean purple urchin gonad index') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, margin = margin(0,0,15,0)), plot.margin = margin(l = 18), legend.position = 'none' #pushes the x axis title away from the x axis labels and pushes the bars down closer to the x axis labels
+) +
+  transparent_theme
+
+# mean GSI over months
+docksidep_nogina_means <- docksidep_nogina %>% 
+  group_by(site, factor_date) %>% 
+  summarise(mean_GSI = mean(gonad_index), sd_GSI = sd(gonad_index)) 
+
+
+ggplot(docksidep_nogina_means, aes(x = factor_date, y = mean_GSI, color = site)) +
+  facet_wrap(~site) +
+  geom_errorbar(aes(ymin = mean_GSI + sd_GSI, ymax = mean_GSI - sd_GSI, width = 0)) +
+  geom_point() +
+  # scale_color_manual(values = c(gonad_dark, 'orange')) +
+  # geom_text(data = NDs, aes(label = letters), y = .5, parse = TRUE) +
+  labs(y = bquote(paste('        Gonad index \n(100 * gonad g * tot. ', ~g^-1, ')')), x = 'Date') + # this was so hard to figure out SAVE IT!!!
+  ggtitle('Mean purple urchin gonad index') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, margin = margin(0,0,15,0)), plot.margin = margin(l = 18), legend.position = 'none' #pushes the x axis title away from the x axis labels and pushes the bars down closer to the x axis labels
+) +
+  transparent_theme
+
+## find sample sizes for above figure with many boxplots
+sample_size2 <- docksidep_nogina %>% 
+  dplyr::group_by(factor_date, site) %>% 
+  dplyr::summarise(median_gi = median(gonad_index), mean_gi = mean(gonad_index), sd_gi = sd(gonad_index), n = n())
+
+# as.data.frame(sample_size2)
+# sample_size2$year= c(rep(2023, 7), rep(2024, 7)) 
+# tibble(sample_size2) 
+# sample_size2 %>% 
+#   rename(month_day = factor_date) %>%
+#   mutate(year = factor(year)) %>% 
+#   dplyr::select(year, month_day, site, median_gi, mean_gi, sd_gi, n) %>%   flextable()
+
+```
+
+```{r more body metrics, include = FALSE}
+## Purple urchin diameter * gonad weight
+ggplot(docksidepn, aes(x = diameter_mm, y = gonad_weight_g, color = site)) +
+  geom_point() +
+  # scale_color_manual(values = c(urchin_purple_dark, urchin_purple_light)) +
+  labs(x = "Diameter (mm)", y = 'Gonad wet weight (g)') +
+  ggtitle('Purple urchin gonad wet weight vs. diameter') +
+  theme(legend.position = c(.15, .8))
+
+## Purple urchin wet weight x gonad weight relationship
+ggplot(docksidepn, aes(x = wet_weight_g, y = gonad_weight_g, color = site)) +
+  geom_point() +
+  # scale_color_manual(values = c(urchin_purple_dark, urchin_purple_light)) +
+  labs(y = "Gonad wet weight (g)", x = 'Total wet weight (g)') +
+  ggtitle('Purple urchin gonad wet weight vs. tot. wet weight') +
+  theme(legend.position = c(.15, .8))
+
+## Purple urchin gonad index
+ggplot(docksidepn, aes(x = gonad_index, fill = site)) +
+  geom_histogram(color = 'black') +
+  facet_grid('site') + 
+  scale_x_continuous(expand = c(0.01,0)) +
+  scale_y_continuous(expand = c(0,0)) +
+  # scale_fill_manual(values = c(gonad_dark, gonad_light)) +
+  labs(y = 'Count', x = 'Gonad index (gonad g / tot. g)') + 
+  ggtitle('Histogram of purple urchin gonad indices from landings') +
+  theme(legend.position = 'none')
+
+# mean gonad index by site
+
+# tiff(filename = 'mean_gonad_index_site.png', units = 'in',  width = 6, height = 4, res = 300) # save the figure
+
+#***** pick up here 2025-08-05
+#*
+# Mean urchin gonad index by site
+docksidep %>%
+  filter(!is.na(gonad_index)) %>% # remove nas for gonad weight so the sample size calculates correctly
+  dplyr::group_by(site) %>%
+  dplyr::summarise(mean_gonad_index = mean(gonad_index, na.rm = T), sd = sd(gonad_index, na.rm = T), n = n()) %>%
+  ggplot(aes(x = site, y = mean_gonad_index, fill = site)) +
+  geom_errorbar(aes(ymin = mean_gonad_index - sd, ymax = mean_gonad_index + sd), width = 0) +
+  geom_col() +
+  # scale_fill_manual(values = c(gonad_dark, gonad_light)) +
+  # scale_y_continuous(expand = c(0,0), limits = c(0, .105)) +
+  labs(x = "Site", y = 'Gonad index (gonad g / tot g)') +
+  ggtitle('Mean purple urchin gonad index') +
+  theme(legend.position = 'none') 
+
+# dev.off()
+  
+# Median urchin gonad index by site 
+(median_gsi_wilcoxon <- docksidep %>%
+  filter(!is.na(gonad_index)) %>% # remove nas for gonad weight so the sample size calculates correctly
+  ggplot(aes(x = site, y = gonad_index, fill = site)) +
+  geom_boxplot() + # the color of gonads
+  # scale_fill_manual(values = c(gonad_dark, gonad_light)) +
+  scale_y_continuous(limits = c(0, .21)) +
+  # annotate('text', x = 1.5, y = .2, label = '*', size = 10) + # need to check if it's significant again
+  labs(y = bquote(paste('Gonad index (gonad g * tot. ', ~g^-1, ')')), x = 'Site') + # this was so hard to figure out SAVE IT!!!
+  # ggtitle('Median purple urchin gonad index with Wilcoxon test') +
+  transparent_theme + theme(legend.position = 'none') 
+)
+
+```
+
+```{r some stats analyses, include = FALSE}
+docksidep24 <- docksidep %>% 
+  filter(datasheet_date > ymd('2023-12-31'))
+
+# urchin diameters
+docksidep %>% 
+  dplyr::filter(!is.na(diameter_mm)) %>% 
+  dplyr::group_by(site) %>% 
+  dplyr::summarise(mean_diam_mm = mean(diameter_mm), sd_diam_mm = sd(diameter_mm), n = n()) %>% 
+  ggplot(aes(x = site, y = mean_diam_mm, fill = site)) +
+  geom_errorbar(aes(ymin = mean_diam_mm - sd_diam_mm, ymax = mean_diam_mm + sd_diam_mm), width = 0) +
+  geom_col() +
+  # scale_fill_manual(values = c(urchin_purple_dark, urchin_purple_light)) +
+  scale_y_continuous(breaks = seq(0,60,10), expand = c(0,0)) +
+  theme(legend.position = 'none')
+
+docksidep %>% 
+  dplyr::filter(!is.na(gonad_index)) %>% 
+  dplyr::group_by(site) %>% 
+  dplyr::summarise(mean_gonad_index = mean(gonad_index), sd_gonad_index = sd(gonad_index), n = n()) %>% 
+  ggplot(aes(x = site, y = mean_gonad_index, fill = site)) +
+  geom_errorbar(aes(ymin = mean_gonad_index - sd_gonad_index, ymax = mean_gonad_index + sd_gonad_index), width = 0) +
+  geom_col() +
+  # scale_fill_manual(values = c(gonad_dark, gonad_light)) +
+  theme(legend.position = 'none')
+
+#boxplots of gonad index
+ggplot(docksidep, aes(x = site, y = gonad_index, fill = site)) +
+  geom_boxplot() +
+  # scale_fill_manual(values = c(gonad_dark, gonad_light)) +
+  theme(legend.position = 'none')
+
+# anova?
+qqnorm(docksidep$diameter_mm); qqline(docksidep$diameter_mm) # yea
+shapiro.test(docksidep$diameter_mm)# p = 0.00877 so is not normal. 
+qqnorm(docksidep$gonad_index); qqline(docksidep$gonad_index) # NOT NORMAL!!
+qqnorm(log(docksidep$gonad_index + 0.1)); qqline(log(docksidep$gonad_index + 0.1)) # noo
+shapiro.test(docksidep$gonad_index)# p < 0.05 so is not normal.
+
+## Parametric tests for when the data were normally distributed; however, they are no longer. Maybe if just looking at 2024 it would be normal.
+# car::Anova(aov(docksidep$diameter_mm ~ docksidep$site)) #DF = 1, F = 3.53, P = 0.06 # Can't do a oneway anova, so trying the t.test
+# t.test(docksidep24$diameter_mm[which(docksidep24$site == "Fort Ross")], docksidep24$diameter_mm[which(docksidep24$site == "Timber")])
+
+# all years! # try Mann-Whitney
+wilcox.test(gonad_index ~ site, data = docksidep, exact = FALSE)
+
+#sample sizes by vessel
+dockside %>% 
+  dplyr::group_by(site) %>% 
+  dplyr::count()
+
+# Significantly different medians. Wilcoxon rank sum test with continuity correction, W = `r wilcox$statistic[[1]]`, P = `r round(wilcox$p.value[[1]], digits = 6)`
+```
+
+```{r diameter and gonad index analyses, include = FALSE}
+# Can we just test if any of the landings had different urchin diameters or gonad indices?
+docksidep %>%
+  dplyr::filter(!is.na(gonad_index)) %>% # remove NAs for gonad index
+  dplyr::group_by(site) %>%
+  dplyr::summarize(n = n()) 
+## Yes but Fort Ross has 206 measurements and Timber has 195 So if I randomly remove 11 from Fort Ross, I can check if the stats test was affected by unequal sample size.
+### The code below randomly removes the 11 rows from Fort Ross Cove.
+
+docksidep_frcn <- docksidep %>%
+  # dplyr::select(site, gonad_index) %>% 
+  dplyr::filter(!is.na(gonad_index)) %>% # first remove NAs for gonad index
+  dplyr::mutate(row = NA) # set up column for row numbers
+
+docksidep_frcn$row[which(docksidep_frcn$site == 'Fort Ross')] = seq(1:length(docksidep_frcn$row[which(docksidep_frcn$site == 'Fort Ross')])) # now only FRC gonad indices are numbered and they can randomly be removed.
+  
+docksidep_195n <- docksidep_frcn[-which(docksidep_frcn$site == 'Fort Ross' & docksidep_frcn$row %in% sample(1:206, 11)),] # 206 is the sample size of Fort Ross and 11 is the difference between the two sample sizes.
+  
+# Check what I just did:
+docksidep_195n %>%
+  dplyr::group_by(site) %>%
+  dplyr::summarize(n = n()) # yay all dates had basically an equal number of data points now.
+### Now each site has the same sample size so we can do some stats.
+
+ggplot(docksidep, aes(x = log(gonad_index))) +
+  geom_histogram(color = 'black') + 
+  facet_grid('site')
+
+docksidep$log_gonad_index = log(docksidep$gonad_index)
+
+shapiro.test(docksidep$log_gonad_index[which(docksidep$log_gonad_index > -1000)]) # very small value, so it fails the test and is not normally distributed for parametric stats.
+
+shapiro.test(docksidep$log_gonad_index[which(docksidep$site == 'Fort Ross' & docksidep$log_gonad_index > -1000)]) # FRC only. Not normal.
+shapiro.test(docksidep$log_gonad_index[which(docksidep$site == 'Timber' & docksidep$log_gonad_index > -1000)]) # TC only. Not normal.
+
+# Perform Wilcox (AKA Mann-Whitney U) test. Instead of comparing the means of two groups, the Wilcox test compares their medians. The Wilcox test is a non-parametric alternative to the parametric independent samples t-test.
+
+(wilcox <- wilcox.test(gonad_index ~ site, data = docksidep[which(docksidep$site %in% c('Fort Ross', 'Timber')),], exact = FALSE)) # w = 11491, P < 0.001, so conclude the medians are different. 
+# Is this affected by the unequal sample sizes? Try again with equal sample sizes. 
+
+# wilcox.test(gonad_index ~ site, data = docksidep_195n, exact = FALSE)
+## W = 2500.5, P < 0.0001, so conclude the medians are still very different. The sample size being different didn't affect the conclusion.
+
+# Is median gonad index different across years within sites?
+## Fort Ross
+# wilcox.test(gonad_index ~ year, data = docksidep %>% filter(site == 'Fort Ross'), exact = FALSE) # Possibly pseudoreplicated bc of groupings within sample date. But P < 0.0002
+## Timber 
+# wilcox.test(gonad_index ~ year, data = docksidep %>% filter(site == 'Timber'), exact = FALSE) # P = 0.006
+
+# Try stats test between all sample dates and sites.
+docksidep$site_date = paste(docksidep$site, docksidep$datasheet_date, sep = "_")
+# Kruskal wallis rank sum test. Nonparametric equivalent of one-way ANOVA.
+kruskal.test(gonad_index ~ site_date, data = docksidep %>% filter(site == 'Timber')) # P < 0.001. Right but I don't know which are dif.
+
+# Fort Ross histograms for all dates
+ggplot(docksidep %>% filter(site == 'Fort Ross'), aes(x = diameter_mm), fill = date) +
+  geom_histogram() + 
+  scale_y_continuous(expand = c(0,0)) +
+  facet_wrap('landing_date') +
+  ggtitle('Purple urchin diameters at Fort Ross Cove')
+
+# Timber histograms for all dates
+ggplot(docksidep %>% filter(site == 'Timber'), aes(x = diameter_mm), fill = date) +
+  geom_histogram() + 
+  scale_y_continuous(expand = c(0,0)) +
+  facet_wrap('landing_date') +
+  ggtitle('Purple urchin diameters at Timber Cove')
+```
+
+```{r checking for normality, include = FALSE}
+# can I make some qqnorm plots for all these really quick?
+par(mar = c(1,1,1,1)) # change margins so it plots at all
+# qqPlot(docksidep$diameter_mm, groups = docksidep$datasheet_date)
+# urchin diameters on Oct 2 are not normal.
+# qqPlot(docksidep$diameter_mm, groups = docksidep$site)
+# # urchin diameters at Fort Ross are a little wonky.
+# qqPlot(docksidep$gonad_index, groups = docksidep$site) # groups = date won't work.
+# qqPlot(docksidep$gonad_index) # gonad index is really not normal. 
+
+# log transform both diameter and gonad condition and test again.
+docksidep$log_diameter = log(docksidep$diameter_mm)
+docksidep$log_gonad_index = log(docksidep$gonad_index)
+
+# qqPlot(docksidep$log_diameter, groups = docksidep$landing_date) # Sep 14 and October 2 still not normal
+# qqPlot(docksidep$log_diameter, groups = docksidep$site) # now timber is not normal either. It was better without log transforming
+
+ggplot(docksidep, aes(x = log_gonad_index)) +
+  geom_histogram() +
+  ggtitle('Log gonad index')
+ggplot(docksidep, aes(x = gonad_index)) +
+  geom_histogram() +
+  ggtitle('Raw gonad index')
+
+## Knowing there are some problems with normality and that eventually I'll probably have to use a nonparametric test or glm or something, let's just plot each date-site as an independent category and see if there are any interesting patterns. I believe I did this already, above, but I'd like to plot it not as a date but as a factor.
+
+ggplot(docksidep, aes(x = paste(site, landing_date), y = diameter_mm)) +
+  geom_boxplot() +
+  labs(x = '') +
+  theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) +
+  ggtitle('Purple urchin diameter by site and date')
+
+ggplot(docksidep, aes(x = paste(site, datasheet_date), y = gonad_index)) +
+  geom_boxplot() +
+  labs(x = '') +
+  theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) +
+  ggtitle('Purple urchin gonad index by site and date')
+
+```
+
+```{r algae in urchin guts, include = FALSE}
+# what proportion of urchins from each landing had what algae?
+##unique(docksidep$algae)
+# count up frequency of each unique algae category per date and site.
+docksidep_algae <- docksidep %>%
+  dplyr::group_by(datasheet_date, site, algae) %>%
+  dplyr::summarize(freq = n()) %>%
+  dplyr::filter(!is.na(algae)) %>% # don't include the rows with NA. Please note this also removes entire sites since we didn't always measure gut contents. I think that is appropriate actually, because we don't have data for those sites, so they shouldn't be plotted.
+  dplyr::mutate(d_b = format(datasheet_date, format = "%d-%b")) # add a column that reformats the date to day-monthname.
+
+# order the algae factors
+docksidep_algae$algae = factor(docksidep_algae$algae, levels = c('brown','green','red','brown/green','brown/red','brown/green/red','unknown/mixed','none'))
+
+ggplot(docksidep_algae, aes(x = paste(site, d_b), y = freq, fill = algae)) +
+  geom_col() + # don't plot NA as a category
+  scale_fill_manual(values = c('chocolate4','green4','red3','olivedrab4','brown','yellow3','slategray','grey18')) +
+  labs(x = 'Site & date', y ='Number of urchins') +
+  theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) +
+  ggtitle('Purple urchin algal diet')
+
+
+#### I no longer see the value in doing this, but it's nifty code, so I kept it####
+# # separate each type of algae so it's counted each time it appears, even when it's mixed. E.g., brown + brown/green = 2 brown and 2 green.
+# dockside_algae <- docksidep %>%
+#   separate(col = algae, into = c('a1','a2','a3')) %>% # separate the two colors of algae when they are written joined with a / as in "brown/green"
+#   pivot_longer(cols = c(a1, a2, a3), names_to = NULL, values_to = "algae.sp")
+# 
+# # I think I want to count how many colors per date/site. like total.
+# # I would like a table with rows of date-site and cols of color, and the cell values are counts. 
+# 
+# table(paste(dockside_algae$date, dockside_algae$site), dockside_algae$algae.sp)
+# 
+# # aggregate raw categorical data by using count from dplyr
+# algae_props <- dockside_algae %>% select(date, site, algae.sp)
+# dplyr::count(algae_props, date, site, algae.sp)
+# 
+# 
+# ggplot(dockside_algae, aes(x = paste(date, site), y = algae1)) +
+#   geom_col() +
+#   theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1))
+```
+
+```{r disease, include = FALSE}
+# what proportion of urchins from each landing had disease?
+dockside %>%
+  dplyr::group_by(datasheet_date, site, species, disease) %>%
+  dplyr::summarize(freq = n()) %>%
+  dplyr::filter(!is.na(disease), !disease == 'none') %>% # don't include the rows with NA or 'none'. 
+  flextable()
+
+# ggplot(dockside_disease, aes(x = paste(site, datasheet_date), y = freq, fill = disease)) + 
+#   geom_col() + 
+#   labs(x = 'Site & date', y ='Number of urchins') +
+#   scale_y_continuous(limits = c(0,1.05), breaks = c(0,1), expand = c(0,0)) +
+#   ggtitle('Urchin disease by site and date')
+
+```
+
+```{r parasites, include = FALSE}
+
+### parasites
+
+# what proportion of urchins from each landing had parasites?
+
+docksidep_parasite <- docksidep %>%
+  dplyr::filter(!is.na(parasite), !parasite == 'no') %>% # don't include the rows with NA or 'no'. 
+  dplyr::group_by(datasheet_date, site, parasite) %>%
+  dplyr::summarize(freq = n())
+
+ggplot(docksidep_parasite, aes(x = paste(site, datasheet_date), y = freq)) + 
+  geom_col() + 
+  scale_y_continuous(breaks = c(0,1,2), expand = c(0,0), limits = c(0,2.1)) +
+  labs(y = "Number of urchins with parasites", x = 'Site and date') +
+  ggtitle('Presence of parasites in purple urchins by site and date')
+```
+
+```{r sediment in urchin guts, include = FALSE}
+# what proportion of urchins from each landing had sediment?
+docksidep_sediment <- docksidep %>%
+  dplyr::group_by(datasheet_date, site, sediment) %>%
+  dplyr::summarize(freq = n()) %>%
+  dplyr::filter(!is.na(sediment)) # don't include the rows with NA. 
+
+ggplot(docksidep_sediment, aes(x = paste(site, datasheet_date), y = freq, fill = sediment)) + 
+  geom_col() + 
+  labs(x = 'Site & date', y ='Number of urchins') +
+  ggtitle('Sediment in purple urchin guts by site and date') +
+  theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1))
+```
+
+```{r stress, include = FALSE}
+# what proportion of urchins from each landing stress spawned?
+docksidep %>%
+  dplyr::filter(!is.na(stress_spawn), !stress_spawn == 'no') %>% #  remove NAs and 'no'
+  dplyr::group_by(site, datasheet_date, stress_spawn) %>%
+  dplyr::summarize(freq = n()) %>%
+  ggplot(aes(x = paste(site, datasheet_date), y = freq)) +
+    geom_col() +
+    labs(x = "Site and date", y = 'Number of urchins') +
+    ggtitle('Stress spawning of purple urchins by site and date') +
+    scale_y_continuous(limits = c(0, 5.3), expand = c(0,0)) +
+    theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1)) 
+```
+
+```{r Summary of urchin weights and counts per site, include = FALSE}
+# Add up urchin weights and divide by number of urchins.
+## first make a summary row for the table, then later I will bind it to the end of the table.
+sum_row <-  docksidep %>% 
+  filter(!is.na(wet_weight_g)) %>% # remove rows with na for weight
+  summarize(site = 'Total', g_sum = sum(wet_weight_g, na.rm = T), N = n())%>%
+  mutate(n_per_g = N / g_sum) %>% # 0.0219 urchins per g
+  mutate(n_per_lb = n_per_g * 453.92)
+
+ docksidep %>%
+  filter(!is.na(wet_weight_g)) %>% # remove rows with na for weight
+  group_by(site) %>%
+  summarize(g_sum = sum(wet_weight_g, na.rm = T), N = n())%>%
+  mutate(site = c('Fort Ross','Timber'), n_per_g = N / g_sum, n_per_lb = n_per_g * 453.92) %>% # 453.592 g per lb and i want n per lb.
+   bind_rows(sum_row) %>%
+   flextable() %>%
+   labelizor(part = "header", 
+             labels = c("site" = "Site"
+                      , "g_sum" = "Total weight (g)"
+                      , "n_per_g" = "Urchins/g"
+                      , "n_per_lb" = "Urchins/lb"
+                      )) %>% #change col names
+     align(align = "center", part = "header") %>% # sets header alignment to center
+     colformat_double(digits = 3) # limits numeric digits
+```
+
+
+```{r explore red urchin data, include = FALSE}
+dockside %>% 
+  filter(species == 'red') %>% 
+  ggplot(aes(x = urchin_no, y = diameter_mm)) +
+  geom_col(fill = 'red3') +
+  labs(y = 'Diameter (mm)', x = 'Urchin number') +
+  scale_y_continuous(expand = c(0,0), limits = c(0, 100)) +
+  geom_hline(yintercept = 89, color = 'grey50') +
+  annotate('text', x = 4.5, y = 93, label = 'Minimum legal harvestable size', color = 'grey50') +
+  ggtitle('Red urchin diameters')
+
+dockside %>% 
+  filter(species == 'red') %>% 
+  ggplot(aes(x = urchin_no, y = gonad_weight_g)) +
+  geom_col(fill = 'darkorange') +
+  labs(y = 'Gonad weight (g)', x = 'Urchin number') +
+  scale_y_continuous(expand = c(0,0)) +
+  ggtitle('Red urchin gonad weights')
+
+dockside$gonad_index = 100 * (dockside$gonad_weight_g / dockside$wet_weight_g)
+
+dockside %>% 
+  filter(species == 'red') %>% 
+  ggplot(aes(x = urchin_no, y = gonad_index)) +
+  geom_col(fill = 'darkorange') +
+  labs(y = 'Gonad index (gonad g / tot g)', x = 'Urchin number') +
+  scale_y_continuous(expand = c(0,0)) +
+  ggtitle('Red urchin gonad indices')
+
+```
+
+```{r compare purples and reds, include = FALSE}
+# boxplot size of each
+dockside %>% 
+  ggplot(aes(x = species, y = diameter_mm, fill = species)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c('mediumpurple', 'red3')) +
+  labs(y = 'Diameter (mm)', x = 'Species')
+
+# boxplot gonad index of each
+dockside %>% 
+  ggplot(aes(x = species, y = gonad_index, fill = species)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c('mediumpurple', 'red3'))+
+  labs(y = 'Gonad index\n(gonad g / tot g)', x = 'Species')
+```
+
+```{r bycatch, fig.cap = "Proportion bycatch per vessel. N = 1 per vessel."}
+# I grouped species that had such a small percentage I couldn't see them in the bar chart.
+
+bycatch_perc <- bycatch %>% 
+  dplyr::filter(!is.na(bycatch_group)) %>% #remove rows with NA for bycatch_group bc that is unusable data like buckets and trays and stuff
+  dplyr::filter(!landing_date == ymd('2024-07-15')) %>% #remove the sampling from Jul 15 because it's repeated and we did a way better job on Jul 25, and I don't want to take the average at this time bc there's not enough data for it to be very meaningful.
+  dplyr::select(landing_date, Vessel, bycatch_group, grams) %>% 
+  dplyr::group_by(landing_date, Vessel, bycatch_group) %>% 
+  dplyr::summarize(grams = sum(grams)) %>% # add up things in the same category? Yes, for the flextable.
+  dplyr::group_by(landing_date, Vessel) %>% 
+  dplyr::mutate(Proportion = grams / sum(grams)) %>% 
+  dplyr::filter(!bycatch_group == 'Purple urchin') %>%  #remove purple urchin rows
+  arrange(.by_group = T, desc(Proportion))  %>% 
+  dplyr::mutate(Percent = Proportion * 100) %>% 
+  dplyr::mutate(bycatch_group = # add carriage returns to long label
+    if_else(
+      bycatch_group == "Other invert, seagrass, green alga, fish, trash, unknown",
+      "Other invert, seagrass,\ngreen alga, fish, trash,\nunknown",
+      bycatch_group) )
+
+# set the factor levels so they are ordered in the ggplot
+bycatch_perc$bycatch_group = factor(bycatch_perc$bycatch_group, levels = unique(bycatch_perc$bycatch_group)[c(1:5,7,8,6)])
+
+(bycatch_percent_vessel_trans <- ggplot(bycatch_perc, aes(x = Vessel, y = Percent, fill = bycatch_group)) +
+ scale_fill_manual("Bycatch group", values = c('chocolate4', 'mediumorchid3', 'aquamarine3', 'violetred1', 'olivedrab', 'orange', 'firebrick', 'steelblue4')) +
+  # scale_fill_brewer("Bycatch group", palette = "Dark2") +
+  geom_col() +
+  scale_y_continuous(expand = c(0,0), limits = c(0, 5)) +
+  transparent_theme)
+
+# ggsave('bycatch_percent_vessel_trans.png', bycatch_percent_vessel_trans, bg = 'transparent')
+
+# flextable(bycatch_perc)
+```

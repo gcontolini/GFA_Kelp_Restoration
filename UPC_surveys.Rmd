@@ -1,0 +1,296 @@
+---
+title: "UPC Surveys"
+subtitle: "By Gina Contolini. Gina.Contolini@noaa.gov"
+author: "Greater Farallones Association and Greater Farallones and Cordell Bank National Marine Sanctuaries"
+date: "Updated on `r Sys.Date()`"
+output: 
+  pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+```{r setup, include = FALSE, echo = FALSE, message = FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE,
+	fig.keep = 'all'
+)
+
+# the shortcut for pipe is ctrl+shift+M
+#### Install and load packages ####
+library(car) #companion to applied regression
+library(tidyverse) # all tidyverse packages including tidyr, dplyr, and ggplot2
+library(ggpubr) # plot aesthetics
+library(flextable) # tidy display table package
+library(googlesheets4)
+
+#### Create plot theme ####
+theme_set(theme( 
+   panel.background = element_blank(), # remove panel background
+   # panel.grid.minor.x = element_blank(), # remove minor x axis grid line
+   # panel.grid.major.x = element_blank(), # remove major x axis grid line
+   panel.grid = element_blank(), # remove all grid lines
+   axis.text = element_text(size = 13,color = 'black'), #makes axis labels bigger
+   axis.title = element_text(size = 15), #makes axis title bigger and bold
+   # axis.ticks = element_blank(),
+   # axis.title.y = element_text(margin=margin(0,10,0,5)), #pushes the y axis title away from the y axis labels
+   # axis.text.x = element_text(margin=margin(0,0,20,0)), #pushes the x axis title away from the x axis labels and pushes the bars down closer to the x axis labels
+   legend.title = element_text(size = 16),
+   legend.text  = element_text(size = 16),
+   legend.background = element_blank(),
+   panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.5), # border around the whole plot
+   plot.title = element_text(size = 15)
+   #legend.key = element_blank()
+))
+```
+
+```{r read in data}
+upc <- read_csv('GFNMS UPC data entry (all years) - load_to_R.csv') %>% 
+  dplyr::mutate(site = replace(site, site == 'timber', 'Timber')) %>% 
+  dplyr::mutate(site = replace(site, site == 'fort_ross', 'Fort Ross')) %>%   
+  dplyr::mutate(site = replace(site, site == 'shell_beach', 'Shell Beach')) %>% 
+  dplyr::mutate(site = replace(site, site == 'pebble_beach', 'Pebble Beach')) %>%
+  dplyr::mutate(site = replace(site, site == 'ocean', 'Ocean')) %>% 
+  dplyr::mutate(site = replace(site, site == 'gerstle', 'Gerstle'))
+# make year factor for plotting
+upc$year = as.factor(upc$year)
+```
+
+```{r check data for completeness, include = FALSE}
+# assign transect ID for ease of sorting later
+upc$transect_ID <- upc %>% 
+  dplyr::group_by(year, site, subsite, region, zone, observer, transect) %>%
+  group_indices()
+
+# number of surveys completed per site per year
+tot_upc_site_year <- upc %>% 
+  dplyr::count(year, site, transect_ID) %>% 
+  dplyr::count(year, site) %>% 
+  mutate(survey_type = 'UPC') %>% 
+  rename(N_yr = n)
+
+# # compared with swath inventory. This is from the subtidal_swath.Rmd scrpt.
+# full_join(tot_survey_site_year, tot_upc_site_year) %>% 
+#   arrange(year, site) %>% 
+#   flextable()
+
+# check that there are 30 observations per transect.
+upc %>% 
+  dplyr::filter(category == 'SUBSTRATE') %>%
+  dplyr::group_by(transect_ID) %>% # group by replicate transect
+  dplyr::summarise(count = sum(count)) %>% 
+  dplyr::filter(!count == 30) # there are only three missing 1 to 10 data points.
+# Transect 7 was never completed because they didn't survey the last 10m segment
+# Transect 10 same story: didn't survey last 10 m, but sometimes observed 11 points instead of 10
+# Transect 17: forgot one point
+
+```
+
+```{r inventory of surveys}
+tot_upc_site_year %>% flextable()
+```
+
+```{r substrate}
+# how much of each transect was bedrock, boulder, cobble, etc?
+upc_substrate <- upc %>%
+  dplyr::group_by(year, month, day, site, subsite, region, zone, transect, transect_ID, category, classcode) %>%
+  dplyr::summarise(count = sum(count)) %>% # sum the three segments per transect
+  dplyr::filter(category == 'SUBSTRATE') %>%
+  dplyr::group_by(year, month, day, site, subsite, zone, transect, transect_ID, classcode) %>% # group by replicate transect
+  dplyr::summarise(count = sum(count)) %>% 
+  dplyr::mutate(proportion = count / sum(count)) 
+
+# Check that all proportions add to one.
+# upc_substrate %>%
+#   group_by(transect_ID) %>%
+#   summarise(prop_sum = sum(proportion)) %>%
+#   filter(!prop_sum == 1) # zero rows do not equal one.
+
+# # Proportion of substrates at all sites, not separated by year
+# upc_substrate %>% 
+#   # dplyr::group_by(site, classcode) %>% 
+#   # dplyr::summarise(mean_prop = mean(proportion), n = n()) %>% 
+#   ggplot(aes(x = classcode, y = proportion)) +
+#   facet_wrap(~site) +
+#   geom_boxplot() +
+#   ggtitle('Proportion of substrates in UPC surveys all years') +
+#   scale_y_continuous(limits = c(0,1)) +
+#   theme(axis.text.x = element_text(angle = 55, vjust = 1, hjust = 1))
+
+# Stacked column chart
+upc_substrate %>% 
+  ggplot(aes(x = site, y = count, fill = classcode)) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 55, vjust = 1, hjust = 1))
+
+# check for changes at FRC and TC
+upc_substrate %>% 
+  filter(site %in% c('Fort Ross', 'Timber', 'Gerstle', 'Ocean')) %>% 
+  ggplot(aes(x = year, y = count, fill = classcode)) +
+  facet_wrap(~site) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 55, vjust = 1, hjust = 1))
+  
+# # boxplots
+# upc_substrate %>% 
+#   filter(site %in% c('Fort Ross', 'Timber')) %>% 
+#   ggplot(aes(x = classcode, y = proportion)) +
+#   # facet_wrap(~site) +
+#   facet_grid(site~year) +
+#   scale_y_continuous(limits = c(0,1)) +
+#   geom_boxplot() +
+#   ggtitle('Proportion of substrates in UPC surveys') +
+#   theme(axis.text.x = element_text(angle = 55, vjust = 1, hjust = 1))
+```
+
+```{r rugosity}
+# Rugosity proportions
+
+# add up the counts in each transect
+upc_rugosity <- upc %>%
+  dplyr::filter(category == 'RELIEF') %>% 
+  dplyr::group_by(year, month, day, site, subsite, region, zone, transect, transect_ID, category, classcode) %>%
+  dplyr::summarise(count = sum(count)) %>% # sum the three segments per transect
+  dplyr::mutate(classcode = factor(classcode, levels = c('0-10cm',  '10cm-1m', '1m-2m', '>2m'))) %>% 
+  dplyr::group_by(year, month, day, site, subsite, zone, transect, transect_ID, classcode) %>% # group by replicate transect
+  dplyr::summarise(count = sum(count)) %>% 
+  dplyr::mutate(proportion = count / sum(count)) 
+
+# # Check that all proportions add to one.
+# upc_rugosity %>%
+#   group_by(transect_ID) %>%
+#   summarise(prop_sum = sum(proportion)) %>%
+#   filter(!prop_sum == 1) # zero rows do not equal one.
+
+# Proportion at all sites, not separated by year
+
+upc_rugosity %>% 
+  ggplot(aes(x = site, y = count, fill = classcode)) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 55, vjust = 1, hjust = 1))
+
+# ## boxplots
+# upc_rugosity %>% 
+#   # dplyr::group_by(site, classcode) %>% 
+#   # dplyr::summarise(mean_prop = mean(proportion), n = n()) %>% 
+#   ggplot(aes(x = classcode, y = proportion)) +
+#   facet_wrap(~site) +
+#   geom_boxplot() +
+#   ggtitle('Proportion of rugosity in UPC surveys all years') +
+#   theme(axis.text.x = element_text(angle = 55, vjust = 1, hjust = 1))
+
+# # This is how to make stacked bars that add to one
+# upc_rugosity %>%
+#   dplyr::group_by(site, classcode) %>%
+#   dplyr::summarise(count = sum(count)) %>%
+#   dplyr::mutate(proportion = count / sum(count)) %>%
+#   ggplot(aes(x = site, y = proportion, fill = classcode)) +
+#   geom_col() +
+#   scale_y_continuous(expand = c(0,0), limits = c(0,1.02))+
+#   ggtitle('Total relief proportion in UPC surveys')
+
+# check for changes at FRC and TC
+upc_rugosity %>% 
+  filter(site %in% c('Fort Ross', 'Timber', 'Gerstle', 'Ocean')) %>% 
+  ggplot(aes(x = year, y = count, fill = classcode)) +
+  facet_wrap(~site) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 55, vjust = 1, hjust = 1))
+  
+# #box plots
+# upc_rugosity %>% 
+#   filter(site %in% c('Fort Ross', 'Timber')) %>% 
+#   ggplot(aes(x = classcode, y = proportion)) +
+#   facet_grid(site ~ year) +
+#   scale_y_continuous(limits = c(0,1)) +
+#   geom_boxplot() +
+#   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+#   ggtitle('Proportion of rugosity in UPC surveys')
+```
+
+```{r cover}
+# Rugosity proportions
+
+# add up the counts in each transect
+upc_cover <- upc %>%
+  dplyr::filter(category == 'COVER') %>% 
+  dplyr::group_by(year, month, day, site, subsite, region, zone, transect, transect_ID, category, classcode) %>%
+  dplyr::summarise(count = sum(count)) %>% # sum the three segments per transect
+  dplyr::group_by(year, month, day, site, subsite, zone, transect, transect_ID, classcode) %>% # group by replicate transect
+  dplyr::summarise(count = sum(count)) %>% 
+  dplyr::mutate(proportion = count / sum(count)) 
+
+# # Check that all proportions add to one.
+# upc_cover %>% 
+#   group_by(transect_ID) %>% 
+#   summarise(prop_sum = sum(proportion)) %>% 
+#   filter(!prop_sum == 1) # zero rows do not equal one. 
+
+# Proportion of cover at Fort Ross
+upc_cover %>% 
+  dplyr::filter(site == 'Fort Ross') %>% 
+  ggplot(aes(x = classcode, y = proportion)) +
+  facet_grid(year~site) +
+  geom_boxplot() +
+  ggtitle('Proportion of cover in UPC surveys at Fort Ross Cove') +
+  theme(axis.text.x = element_text(angle = 55, vjust = 1, hjust = 1))
+
+# Proportion of cover at Timber
+upc_cover %>% 
+  dplyr::filter(site == 'Timber') %>% 
+  ggplot(aes(x = classcode, y = proportion)) +
+  facet_grid(year~site) +
+  geom_boxplot() +
+  ggtitle('Proportion of cover in UPC surveys at Timber Cove') +
+  theme(axis.text.x = element_text(angle = 55, vjust = 1, hjust = 1))
+
+# Proportion of cover at Gerstle
+upc_cover %>% 
+  dplyr::filter(site == 'Gerstle') %>% 
+  ggplot(aes(x = classcode, y = proportion)) +
+  facet_grid(year~site) +
+  geom_boxplot() +
+  ggtitle('Proportion of cover in UPC surveys at Gerstle Cove') +
+  theme(axis.text.x = element_text(angle = 55, vjust = 1, hjust = 1))
+
+# Proportion of cover at Ocean Cove
+upc_cover %>% 
+  dplyr::filter(site == 'Ocean') %>% 
+  ggplot(aes(x = classcode, y = proportion)) +
+  facet_grid(year~site) +
+  geom_boxplot() +
+  ggtitle('Proportion of cover in UPC surveys at Ocean Cove') +
+  theme(axis.text.x = element_text(angle = 55, vjust = 1, hjust = 1))
+
+# Proportion of cover at Shell Beach
+upc_cover %>% 
+  dplyr::filter(site == 'Shell Beach') %>% 
+  ggplot(aes(x = classcode, y = proportion)) +
+  facet_grid(year~site) +
+  geom_boxplot() +
+  ggtitle('Proportion of cover in UPC surveys at Shell Beach') +
+  theme(axis.text.x = element_text(angle = 55, vjust = 1, hjust = 1))
+
+# # This is how to make stacked bars that add to one
+# upc_rugosity %>%
+#   dplyr::group_by(site, classcode) %>%
+#   dplyr::summarise(count = sum(count)) %>%
+#   dplyr::mutate(proportion = count / sum(count)) %>%
+#   ggplot(aes(x = site, y = proportion, fill = classcode)) +
+#   geom_col() +
+#   scale_y_continuous(expand = c(0,0), limits = c(0,1.02))+
+#   ggtitle('Total relief proportion in UPC surveys')
+
+
+## old code below
+# # how much of each transect was each cover category?
+# upc  %>%
+#   filter(category == 'COVER') %>%
+#   dplyr::group_by(site, classcode) %>%
+#   dplyr::summarise(count = sum(count)) %>%
+#   dplyr::mutate(proportion = count / sum(count)) %>%
+#   ggplot(aes(x = site, y = proportion, fill = classcode)) +
+#   geom_col() +
+#   scale_y_continuous(expand = c(0,0), limits = c(0,1.02))+
+#   ggtitle('Total cover proportion in UPC surveys')
+```

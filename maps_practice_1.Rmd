@@ -1,0 +1,59 @@
+---
+title: "Purple Urchin Removal Maps"
+subtitle: "By Gina Contolini. Gina.Contolini@noaa.gov"
+author: "Greater Farallones Association and Greater Farallones and Cordell Bank National Marine Sanctuaries"
+date: "Updated on `r Sys.Date()`"
+output: 
+  pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+library(ggOceanMaps)
+library(tidyverse)
+library(ggspatial)
+# library(rdgal) # not available for this version of R.
+removal_coords <- read_csv('Purple urchin landings datasheet - removal_coords.csv')
+
+# #high res coastline data.
+## Following instructions from ggOceanMaps user guide. https://mikkovihtakari.github.io/ggOceanMaps/articles/ggOceanMaps.html 
+## Download large files of high res imagery here: https://www.naturalearthdata.com/downloads/10m-physical-vectors/ 
+## Can't do this because the rdgal package is not available
+# NEDPath <- "C:Users/Gina.Contolini/Documents/GFA Kelp Restoration/GIS"
+# coastline <- rgdal::readOGR(paste(NEDPath, "ne_10m_coastline.shp", sep = '/'))
+## Note rdgal is deprecated. I just use sf, star, and other packages to map.
+```
+
+```{r Fort Ross Cove}
+frc = c(-123.255, -123.2399, 38.505, 38.515)
+basemap(limits = frc) +
+  ggspatial::geom_spatial_point(data = removal_coords %>% filter(!site == 'timber'), aes(x = lon, y = lat, shape = vessel, color = vessel)) +
+  geom_point() +
+  scale_color_manual(values = c('green4', 'navyblue')) +
+  scale_y_continuous(breaks = seq(38.505, 38.515, 0.005)) +
+  scale_x_continuous(breaks = seq(-123.255, -123.240, 0.005)) +
+  theme(panel.grid = element_blank()) +
+  ggspatial::annotation_scale() + # adds scale bar
+  ggtitle('Purple urchin removals Fort Ross Cove 2023')
+
+```
+
+```{r Timber Cove}
+tc = c(-123.280, -123.26499, 38.535, 38.525)
+basemap(limits = tc) +
+  ggspatial::geom_spatial_point(data = removal_coords %>% filter(!site == 'fort_ross'), aes(x = lon, y = lat), color = 'red3') +
+  geom_point() +
+  scale_y_continuous(breaks = seq(38.525, 38.535, 0.005)) +
+  scale_x_continuous(breaks = seq(-123.280, -123.265, 0.005)) +
+  theme(panel.grid = element_blank()) +
+  ggspatial::annotation_scale() +
+  ggtitle('Purple urchin removals Timber Cove 2023')
+```
+
+This report was produced using RMarkdown in RStudio version 2023.09.1+494 "Desert Sunflower" and `r version$version.string`. Maps were produced using package 'ggOceanMaps': Vihtakari M (2023). _ggOceanMaps: Plot Data on Oceanographic Maps using 'ggplot2'_. R package version 2.1.1, <https://CRAN.R-project.org/package=ggOceanMaps>.

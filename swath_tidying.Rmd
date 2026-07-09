@@ -1,0 +1,684 @@
+---
+title: "Subtidal swath and targeted surveys"
+subtitle: "By Gina Contolini. Greater Farallones Association, NOAA Affiliate"
+author: "Greater Farallones and Cordell Bank National Marine Sanctuaries"
+date: "Updated on `r Sys.Date()`"
+header-includes:
+- \usepackage{float}
+- \floatplacement{figure}{H}
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(flextable)
+# library(bookdown)
+library(scales) # to get commas in the axis labels
+library(RColorBrewer)
+library(car)
+library(vegan) # for rarefaction
+library(googlesheets4) # to read in a spreadsheet directly from Google Drive
+
+urchin_purple = 'mediumpurple1'
+urchin_red = 'tomato'
+kelp_green = 'lightgreen'
+
+# set ggplot theme
+my_theme <- theme( 
+   panel.background = element_rect(fill = 'transparent', color = NA_character_), # transparent panel background
+   plot.background = element_rect(fill = 'transparent', color = NA_character_), #transparent plot bkgd
+   panel.grid = element_line(color = 'transparent'), # remove all grid lines
+   panel.border = element_blank(),
+   axis.text = element_text(size = 15, color = 'black'), # makes axis labels bigger
+   axis.title = element_text(size = 20), #makes axis title bigger and bold
+   axis.ticks.x = element_blank(),
+   # axis.title.y = element_text(margin=margin(0,10,0,5)), # pushes the y axis title away from the y axis labels
+   # axis.text.x = element_text(margin=margin(0,0,20,0)), #pushes the x axis title away from the x axis labels and pushes the bars down closer to the x axis labels
+   legend.title = element_text(size = 20),
+   legend.text = element_text(size = 18),
+   legend.background = element_rect(fill = 'transparent', color = NA_character_),
+   axis.line = element_line(color = 'black'),
+   plot.title = element_text(size = 20),
+   legend.key = element_rect(fill = 'transparent'),
+   strip.text = element_text(size = 20)
+   # panel.grid.minor.x = element_blank(), # remove minor x axis grid line
+   # panel.grid.major.x = element_blank(), # remove major x axis grid line
+)
+
+transparent_theme <-  my_theme + theme(
+    panel.background = element_rect(fill='transparent', color = NA_character_), #transparent panel bg
+    plot.background = element_rect(fill='transparent', color = NA_character_), #transparent plot bg
+    panel.grid.major = element_blank(), #remove major gridlines
+    panel.grid.minor = element_blank(), #remove minor gridlines
+    legend.background = element_rect(fill='transparent', color = NA_character_), #transparent legend bg
+    legend.box.background = element_rect(fill='transparent', color = NA_character_) #transparent legend panel
+  ) # to print a transparent bg plot, use this theme and ggsave("plot.png", plot, bg = "transparent")
+```
+
+```{r load and format data, include = FALSE}
+swath <- read_csv('GFNMS Swath and KELPUR data entry (all years) - load_to_R.csv') %>% # loaded 2025-09-08
+  dplyr::mutate(site = replace(site, site == 'timber', 'Timber')) %>% 
+  dplyr::mutate(site = replace(site, site == 'fort_ross', 'Fort Ross')) %>%   
+  dplyr::mutate(site = replace(site, site == 'shell_beach', 'Shell Beach')) %>% 
+  dplyr::mutate(site = replace(site, site == 'pebble_beach', 'Pebble Beach')) %>% 
+  dplyr::mutate(site = replace(site, site == 'ocean', 'Ocean')) %>% 
+  dplyr::mutate(site = replace(site, site == 'gerstle', 'Gerstle')) %>% 
+  dplyr::mutate(survey_type = if_else(PISCO == FALSE,
+                                  paste(survey_type, 'GFA', sep = '-'),
+                                  survey_type)) %>% # Make a new col that identifies lone GFA KELPUR surveys
+  filter(!(site == 'Ocean' & year == 2025 & month == 09 & day == 10)) %>% # remove 2025-09-10 data from Ocean Cove because it was not collected well due to surge and can't be trusted.
+  dplyr::mutate(heading = as.character(heading)) # for joins later
+
+#### Trying to read directly from Google Sheets. 
+## It's reading a bunch of variables as lists which is annoying. Figure it out later.
+# swath2 <- range_read("https://docs.google.com/spreadsheets/d/139MfTFri10hTv-wVnzhVEWhzdAjV4wc1wucQArMxgYo/edit?gid=344928460#gid=344928460", sheet = 'load_to_R') %>% # loaded directly from Google Drive
+#   dplyr::mutate(site = replace(site, site == 'timber', 'Timber')) %>% 
+#   dplyr::mutate(site = replace(site, site == 'fort_ross', 'Fort Ross')) %>%   
+#   dplyr::mutate(site = replace(site, site == 'shell_beach', 'Shell Beach')) %>% 
+#   dplyr::mutate(site = replace(site, site == 'ocean', 'Ocean')) %>% 
+#   dplyr::mutate(site = replace(site, site == 'gerstle', 'Gerstle')) %>% 
+#   dplyr::mutate(heading = as.character(heading)) # for joins later
+
+# upload targeted monitoring (URCHIN) data, currently only available in 2023
+target <- read_csv('URCHIN_survey_data - URCHIN_tot_counts+sizes.csv') %>% # loaded 2025-02-05
+  dplyr::mutate(survey_type = 'URCHIN') %>% 
+  dplyr::mutate(site = replace(site, site == 'timber', 'Timber')) %>% 
+  dplyr::mutate(site = replace(site, site == 'fort_ross', 'Fort Ross')) %>%   
+  dplyr::mutate(site = replace(site, site == 'ocean', 'Ocean'))
+
+swath_target <- full_join(swath, target) %>% 
+  dplyr::mutate(year = as.factor(year)) %>% #otherwise year is printed with a comma for the thousands
+  dplyr::mutate(year = factor(year, levels = c(2022, 2023, 2024, 2025)))
+```
+
+# Inventory of surveys
+```{r explore data and check for errors, include = FALSE}
+# check for completeness
+# total number of surveys done.
+# how many of each type?
+## I had to manually identify transect_ID because there were too many inconsistencies with the metadata. So each separate transect is already manually identified by a unique number. This means the entire community can be identified and community analyses can proceed.
+
+# number of each type of survey
+n_survey_type <- swath_target %>% 
+  count(survey_type, transect_ID) %>% 
+  count(survey_type)
+
+# number of each type of survey per site per day
+swath_target_survey_counts <- swath_target %>% 
+  dplyr::count(year, month, day, site, survey_type, transect_ID) %>%  # n shows how many rows we entered for each individual transect. This is only useful because now all the rows with the same metadata are represented by one row. I don't actually care about how many rows were entered.
+  dplyr::count(year, month, day, site, survey_type) %>%
+  dplyr::arrange(year, month, day, site)
+
+## Inventory of completed PISCO surveys to date
+swath_target %>% 
+  filter(PISCO == TRUE) %>% 
+  group_by(year, site, survey_type, transect_ID) %>% 
+  count() %>% 
+  group_by(year, site, survey_type) %>%
+  count() %>%
+  flextable()
+# There was an extra KELPUR PISCO at Ocean in 2025 because they didn't have time for the other surveys on that transect.
+
+## Inventory of completed surveys to date
+swath_target %>% 
+  group_by(year, site, survey_type, transect_ID) %>% 
+  count() %>% 
+  group_by(year, site, survey_type) %>%
+  count() %>%
+  flextable()
+
+# View(swath_target_survey_counts)
+# algae swaths missing:
+## 3 on 14 Sep 2022 (Fort Ross)
+### 2 main MID and 1 north MID 
+## 3 on 15 Sep 2022 (Timber)
+### 2 main SHALLOW and 1 north MID
+
+# I could not find them in the photos of datasheets. I made notes about them on the data entry spreadsheet.
+
+# AbU_only <- swath_target %>% 
+#   dplyr::filter(year == '2022', month == '9', day == '15', site == 'Timber', survey_type == 'AbU') %>% 
+#   dplyr::group_by(subsite, region, zone, transect, heading, observer, buddy) %>% 
+#   dplyr::summarise(n = n())
+
+# summarize by year, month, site, survey type 
+tot_survey_site_month <- swath_target_survey_counts %>% 
+  # dplyr::filter(year == 2024) %>% #filter for 2024 only
+  dplyr::group_by(year, month, site, survey_type) %>% 
+  dplyr::summarise(N = sum(n))
+
+# Some of the surveys were done twice at a site and have the same transect ID mistakenly. To check for this, see how many STRPUR entries there are per transect ID. There should never be more than 3 since there are three segments sampled maximum. 
+swath %>% 
+  filter(classcode == 'STRPUR') %>% 
+  # group_by(transect_ID) %>% 
+  count(transect_ID) %>% 
+  filter(n > 3) # 0 yay
+
+# How many different survey types per transect_ID for PISCO transects? Should be 3. KELPUR-PISCO should always be with invert and algae unless there's a note about something missing
+swath %>% # swath does not include URCHIN surveys
+  filter(PISCO == TRUE) %>% 
+  count(year, site, transect_ID, survey_type) %>% 
+  count(year, site, transect_ID) %>% 
+  filter(!n == 3) # wherever n does not = 3, there's an issue
+# Transect 174 only has a KELPUR survey because there was no time for the others. This is correct.
+
+## Corrections made on 2026-02-09:
+# transect 139 only has algae. I found the invert swath and labeled it.
+# transect 156 is a lone algae at TC, and was also used with SB. Should probably be 162 .
+# transect 157 only has algae and I paired it with its invert (163)
+# transect 158 only has algae and I paired it with its invert (164). 
+# transect 162 only has invert and I paired it with its algae (previously 156).
+# transect 163 only has invert and I paired it with its algae (previously 157).  
+# transect 164 only has invert and I paired it with its algae (previously 158).
+
+# How many different survey types for KELPUR-GFA per transect_ID? There should just be n = 1.
+swath %>% 
+  filter(PISCO == FALSE) %>% 
+  count(year, site, transect_ID, survey_type) %>% 
+  count(year, site, transect_ID) %>% 
+  filter(!n == 1) # 0 yay
+```
+As of `r Sys.Date()`, we have conducted `r sum(n_survey_type$n)` subtidal swath surveys, including `r n_survey_type$n[which(n_survey_type$survey_type == 'URCHIN')]` targeted monitoring, `r n_survey_type$n[which(n_survey_type$survey_type == 'invert_swath')]` invertebrate community, `r n_survey_type$n[which(n_survey_type$survey_type == 'algae_swath')]` alga community, `r n_survey_type$n[which(n_survey_type$survey_type == 'KELPUR')]` KELPUR, `r n_survey_type$n[which(n_survey_type$survey_type == 'KELPUR-GFA')]` KELPUR-GFA,  and `r n_survey_type$n[which(n_survey_type$survey_type == 'AbU')]` abalone-urchin surveys. UPC surveys are analyzed elsewhere.
+
+```{r deal with incomplete surveys, duplicate surveys, and implicit zeros}
+# correct density for marked transects
+missing_segments <- swath_target %>% filter(missing_segments == TRUE)
+(N_missing_segments <- unique(missing_segments$transect_ID)) # 1 10 12 76 77 78 79 80 81 82 need help.
+
+#### Transect 1 is missing the last 10 m segment for all species. ####
+transect1_corrections <- swath_target %>% 
+  filter(transect_ID == 1) %>% # just transect 1.
+  dplyr::mutate(den_per_m = (count / (meters_sampled))) %>% # calculate density in the meters that were actually sampled.
+   dplyr::mutate(extrap_count_segment = 
+                   if_else(segment %in% c("0-10m", "10-20m", "20-30m"), den_per_m * 10, den_per_m * 20)) %>% # multiply density by the length of the segment to extrapolate counts where needed so we can add them up later. Needs if_else because not all segments have the same length. And this transect is missing the last 10 m, so the full distance is 20 not 30 m.
+   # combine species counts from all available segments per survey:
+   dplyr::group_by(year, month, day, site, subsite, survey_type, transect_ID, classcode) %>% # group by species in each survey, so all segments are together
+   dplyr::summarise(count_sum = sum(extrap_count_segment, na.rm = T), N = n()) %>%  # add up counts in all segments per survey
+   dplyr::mutate(den_m2_corrected = count_sum / 40) # calculate density for the entire 20 x 2 m survey.
+
+#### Transect 10 is missing the last 10 m segment for all species. ####
+transect10_corrections <- swath_target %>% 
+  filter(transect_ID == 10) %>% # just transect 10.
+  dplyr::mutate(den_per_m = (count / (meters_sampled))) %>% # calculate density in the meters that were actually sampled.
+   dplyr::mutate(extrap_count_segment = 
+                   if_else(segment %in% c("0-10m", "10-20m", "20-30m"), den_per_m * 10, den_per_m * 20)) %>% # multiply density by the length of the segment to extrapolate counts where needed so we can add them up later. Needs if_else because not all segments have the same length. And this transect is missing the last 10 m, so the full distance is 20 not 30 m.
+   # combine species counts from all available segments per survey:
+   dplyr::group_by(year, month, day, site, subsite, survey_type, transect_ID, classcode) %>% # group by species in each survey, so all segments are together
+   dplyr::summarise(count_sum = sum(extrap_count_segment, na.rm = T), N = n()) %>%  # add up counts in all segments per survey
+   dplyr::mutate(den_m2_corrected = count_sum / 40) # calculate density for the entire 20 x 2 m survey.
+
+#### Transect 12 is missing 10 m for STRPUR only. ####
+transect12_corrections <- swath_target %>% 
+  filter(transect_ID == 12 & classcode == 'STRPUR') %>% # just transect 12 and just STRPUR
+  dplyr::mutate(den_per_m = (count / (meters_sampled))) %>% # calculate density in the meters that were actually sampled.
+   dplyr::mutate(extrap_count_segment =  den_per_m * 10) %>% # multiply density by the length of the segment to extrapolate counts where needed so we can add them up later.
+   # combine species counts from all available segments per survey:
+   dplyr::group_by(year, month, day, site, subsite, survey_type, transect_ID, classcode) %>% # group by species in each survey, so all segments are together
+   dplyr::summarise(count_sum = sum(extrap_count_segment, na.rm = T), N = n()) %>%  # add up counts in all segments per survey
+   dplyr::mutate(den_m2_corrected = count_sum / 40) # calculate density for the entire 20 x 2 m survey.
+
+#### Transect 76 is missing 20 m for PTECALJUV only. ####
+transect76_corrections <- swath_target %>% 
+  filter(transect_ID == 76 & classcode == 'PTECALJUV') %>% # just transect 76 and just PTECALJUV
+  dplyr::mutate(den_per_m = (count / (meters_sampled))) %>% # calculate density in the meters that were actually sampled.
+   dplyr::mutate(extrap_count_segment = den_per_m * 10) %>% # multiply density by the length of the segment to extrapolate counts where needed so we can add them up later.
+   # combine species counts from all available segments per survey:
+   dplyr::group_by(year, month, day, site, subsite, survey_type, transect_ID, classcode) %>% # group by species in each survey, so all segments are together
+   dplyr::summarise(count_sum = sum(extrap_count_segment, na.rm = T), N = n()) %>%  # add up counts in all segments per survey
+   dplyr::mutate(den_m2_corrected = count_sum / 20) # calculate density for the entire 10 x 2 m survey.
+
+#### Transect 77 is missing 20 m for PTECALJUV only. ####
+transect77_corrections <- swath_target %>% 
+  filter(transect_ID == 77 & classcode == 'PTECALJUV') %>% # just transect 77 and just PTECALJUV
+  dplyr::mutate(den_per_m = (count / (meters_sampled))) %>% # calculate density in the meters that were actually sampled.
+   dplyr::mutate(extrap_count_segment = den_per_m * 10) %>% # multiply density by the length of the segment to extrapolate counts where needed so we can add them up later.
+   # combine species counts from all available segments per survey:
+   dplyr::group_by(year, month, day, site, subsite, survey_type, transect_ID, classcode) %>% # group by species in each survey, so all segments are together
+   dplyr::summarise(count_sum = sum(extrap_count_segment, na.rm = T), N = n()) %>%  # add up counts in all segments per survey
+   dplyr::mutate(den_m2_corrected = count_sum / 20) # calculate density for the entire 10 x 2 m survey.
+
+#### Transect 78 is missing 10 m for PTECALJUV only. ####
+transect78_corrections <- swath_target %>% 
+  filter(transect_ID == 78 & classcode == 'PTECALJUV') %>% # just transect 78 and just PTECALJUV
+  dplyr::mutate(den_per_m = (count / (meters_sampled))) %>% # calculate density in the meters that were actually sampled.
+   dplyr::mutate(extrap_count_segment = den_per_m * 10) %>% # multiply density by the length of the segment to extrapolate counts where needed so we can add them up later.
+   # combine species counts from all available segments per survey:
+   dplyr::group_by(year, month, day, site, subsite, survey_type, transect_ID, classcode) %>% # group by species in each survey, so all segments are together
+   dplyr::summarise(count_sum = sum(extrap_count_segment, na.rm = T), N = n()) %>%  # add up counts in all segments per survey
+   dplyr::mutate(den_m2_corrected = count_sum / 40) # calculate density for the entire 20 x 2 m survey.
+
+#### Transect 79 is missing 20 m for PTECALJUV only. ####
+transect79_corrections <- swath_target %>% 
+  filter(transect_ID == 79 & classcode == 'PTECALJUV') %>% # just transect 79 and just PTECALJUV
+  dplyr::mutate(den_per_m = (count / (meters_sampled))) %>% # calculate density in the meters that were actually sampled.
+   dplyr::mutate(extrap_count_segment = den_per_m * 10) %>% # multiply density by the length of the segment to extrapolate counts where needed so we can add them up later.
+   # combine species counts from all available segments per survey:
+   dplyr::group_by(year, month, day, site, subsite, survey_type, transect_ID, classcode) %>% # group by species in each survey, so all segments are together
+   dplyr::summarise(count_sum = sum(extrap_count_segment, na.rm = T), N = n()) %>%  # add up counts in all segments per survey
+   dplyr::mutate(den_m2_corrected = count_sum / 20) # calculate density for the entire 10 x 2 m survey.
+
+#### Transect 80 is missing 20 m for PTECALJUV only ####
+transect80_corrections <- swath_target %>% 
+  filter(transect_ID == 80 & classcode == 'PTECALJUV') %>% # just transect 80 and just PTECALJUV
+  dplyr::mutate(den_per_m = (count / (meters_sampled))) %>% # calculate density in the meters that were actually sampled.
+   dplyr::mutate(extrap_count_segment = den_per_m * 10) %>% # multiply density by the length of the segment to extrapolate counts where needed so we can add them up later.
+   # combine species counts from all available segments per survey:
+   dplyr::group_by(year, month, day, site, subsite, survey_type, transect_ID, classcode) %>% # group by species in each survey, so all segments are together
+   dplyr::summarise(count_sum = sum(extrap_count_segment, na.rm = T), N = n()) %>%  # add up counts in all segments per survey
+   dplyr::mutate(den_m2_corrected = count_sum / 20) # calculate density for the entire 10 x 2 m survey.
+
+#### Transect 81 is missing 20 m for PTECALJUV only. ####
+transect81_corrections <- swath_target %>% 
+  filter(transect_ID == 81 & classcode == 'PTECALJUV') %>% # just transect 81 and just PTECALJUV
+  dplyr::mutate(den_per_m = (count / (meters_sampled))) %>% # calculate density in the meters that were actually sampled.
+   dplyr::mutate(extrap_count_segment = den_per_m * 10) %>% # multiply density by the length of the segment to extrapolate counts where needed so we can add them up later.
+   # combine species counts from all available segments per survey:
+   dplyr::group_by(year, month, day, site, subsite, survey_type, transect_ID, classcode) %>% # group by species in each survey, so all segments are together
+   dplyr::summarise(count_sum = sum(extrap_count_segment, na.rm = T), N = n()) %>%  # add up counts in all segments per survey
+   dplyr::mutate(den_m2_corrected = count_sum / 20) # calculate density for the entire 10 x 2 m survey.
+
+#### Transect 82 is missing 20 m for PTECALJUV only. ####
+transect82_corrections <- swath_target %>% 
+  filter(transect_ID == 82 & classcode == 'PTECALJUV') %>% # just transect 82 and just PTECALJUV
+  dplyr::mutate(den_per_m = (count / (meters_sampled))) %>% # calculate density in the meters that were actually sampled.
+   dplyr::mutate(extrap_count_segment = den_per_m * 10) %>% # multiply density by the length of the segment to extrapolate counts where needed so we can add them up later.
+   # combine species counts from all available segments per survey:
+   dplyr::group_by(year, month, day, site, subsite, survey_type, transect_ID, classcode) %>% # group by species in each survey, so all segments are together
+   dplyr::summarise(count_sum = sum(extrap_count_segment, na.rm = T), N = n()) %>%  # add up counts in all segments per survey
+   dplyr::mutate(den_m2_corrected = count_sum / 20) # calculate density for the entire 10 x 2 m survey.
+
+#### combine all the corrected densities and add implicit zeros ###
+corrected_densities <- full_join(transect1_corrections, transect10_corrections) %>% full_join(transect12_corrections) %>% full_join(transect78_corrections) %>% full_join(transect79_corrections) %>% full_join(transect80_corrections) %>% full_join(transect81_corrections) %>% full_join(transect82_corrections) 
+
+# Now the den_m2_corrected column is the correct density based on how much distance was actually surveyed per segment per species. 
+
+#### Remove NERLUE counts in KELPUR surveys ####
+swath_target %>% 
+  filter(survey_type == 'KELPUR' & PISCO == TRUE & classcode == 'NERLUE' & count > 0) %>% 
+  count(survey_type, transect_ID) 
+
+## There are 10 KELPUR-PISCO surveys with NERLUE adults counted and shouldn't have been. Remove them. transect_IDs = 147:154, 158, 174
+swath_target <- swath_target %>% 
+  filter(!c(survey_type == 'KELPUR' & transect_ID %in% c(147:154, 158, 174) & classcode == 'NERLUE')) 
+
+```
+
+```{r calculate density}
+swath_target_den_uncorrected <- swath_target %>% 
+   dplyr::mutate(den_per_m = (count / (meters_sampled))) %>% # calculate density in the meters that were actually sampled.
+   dplyr::mutate(extrap_count_segment = 
+                   if_else(segment %in% c("0-10m", "10-20m", "20-30m"), den_per_m * 10, den_per_m * 30)) %>% # multiply density by the length of the segment to extrapolate counts where needed so we can add them up later. Needs if_else because not all segments have the same length. 
+   # combine species counts from all available segments per survey:
+   dplyr::group_by(year, month, day, site, subsite, survey_type, transect_ID, classcode) %>% # group by species in each survey, so all segments are together
+   dplyr::summarise(count_sum = sum(extrap_count_segment, na.rm = T), N = n()) %>%  # add up counts in all segments per survey
+   dplyr::mutate(den_m2 = count_sum / 60) # calculate density for the entire 30 x 2 m survey. Most are 60m2, but some are incomplete and have smaller area, as listed in the dataframe "incomplete_surveys".
+
+# combine the corrected densities with swath_target_den_uncorrected
+
+corrected_join <- full_join(swath_target_den_uncorrected, corrected_densities) # this adds a "corrected" col if there were corrections. If not, it's NA. So next fill in the NAs.
+
+swath_target_den_implicit0s <- corrected_join %>% 
+  mutate(den_m2_corrected = if_else(
+    is.na(den_m2_corrected), den_m2, den_m2_corrected)) %>% # if den_m2_corrected is NA, replace it with den_m2. Otherwise just keep it as den_m2_corrected.
+  select(!c(den_m2, count_sum, N)) %>% #remove the uncorrected density column for clarity.
+  ungroup() # ungroup for easier manipulations later
+  # filter((transect_ID == 1 & survey_type == 'algae_swath') | (transect_ID == 2 & survey_type == 'algae_swath')) %>% 
+  # mutate(year = 2022, month = 9, day = 14, site = 'Fort Ross', subsite = 'Main') # adding rows for transects 1 & 2 algae_swaths which had no data at all.#***
+
+#### Is NERLUE the same as NERLUEAD? Should they be combined?
+swath_target_den_implicit0s %>% 
+  group_by(year, month, site, survey_type) %>% 
+  filter(classcode == 'NERLUEAD') %>% 
+  count() #it's in the URCHIN surveys. yuk. # Changed NERLUEAD to NERLUE in URCHIN survey spreadsheet on 2026-02-18. Now there will never be a NERLUEAD recorded ever again! I should probably change all NERLUE to NERLUEAD though TBH because it's more explicit. later. also should make it clear in the spreadsheet/datasheet what to enter.
+
+#### Add implicit zeros for all classcodes not listed for a given survey_type and transect_ID ####
+# This looks for all observed classcodes within a given survey_type and makes sure all transect_IDs have all classcodes for that survey_type. It adds a row for the classcode if it isn't there, then makes the density value 0. 
+
+# practice with complete()
+practice <- tibble(year = c(rep(2022, 4), rep(2023, 4)),
+                   month = c(rep(9, 4), rep(7, 4)),
+                   day = c(rep(14, 4), rep(8, 4)),
+                   site = c(rep('FRC',4), rep('TC', 4)),
+                   subsite = c('Main','Main','North','North', rep('Main',4)), 
+                   survey_type = c(rep('AbU', 4), rep('KELPUR', 4)),
+                   transect_ID = c(1,1,2,2,3,3,4,4), 
+                   classcode = c('HALRUF', 'STRPUR', 'HALKAM', 'MESFRA', 'STRPUR', 'PTECALJUV', 'STRPUR', 'NERLUEJUV'),
+                   den_m2_corrected = c(0, 22.5, 1.91, 3, 15.2, 1.3, 0.1, 5))
+
+practice %>% 
+  group_by(survey_type) %>% 
+  complete(transect_ID, classcode) %>% 
+  mutate(den_m2_corrected = replace_na(den_m2_corrected, 0))
+
+swath_target_den <- swath_target_den_implicit0s  %>% 
+  group_by(survey_type) %>% # only perform the complete() within survey types. So, e.g., we shouldn't find a STRPUR in an algae_swath after this, but all algae_swaths should have rows for all the types of algae.
+  complete(transect_ID, classcode) %>% 
+  mutate(den_m2_corrected = replace_na(den_m2_corrected, 0)) %>% 
+  # filter(is.na(year)) %>% # I'm just keeping the new 0 cols so I can join it with the other metadata next.
+  # select(transect_ID, survey_type, classcode_implicit, den_implicit) # just keeping cols with info
+  filter(!c(classcode == 'HALRUF' & survey_type == 'invert_swath')) %>% # there should not be abalone in invert swaths
+  filter(!c(classcode == 'HALKAM' & survey_type == 'invert_swath')) %>% # there should not be abalone in invert swaths
+  filter(!c(classcode == 'NERLUE' & survey_type == 'KELPUR')) %>% # there should not be NERLUE in KELPUR
+  filter(!c(classcode == 'LAMSPP' & survey_type == 'algae_swath')) %>% # there should not be LAMSPP in algae_swath
+  filter(!c(classcode == 'PTECALJUV' & survey_type == 'algae_swath')) %>% # there should not be PTECALJUV in algae_swath
+  select(year, month, day, site, subsite, transect_ID, survey_type, classcode, den_m2_corrected)
+
+#### Adding back metadata to new AbU rows based on transect_ID ####
+survey_name = 'AbU'
+transect_IDs = as.data.frame(swath_target_den %>% filter(survey_type == survey_name) %>% distinct(transect_ID) %>% ungroup() %>% select(transect_ID)) # create list of transect_IDs that exist for each survey_type so I can call them all up in the for loop below.
+
+for (i in 1:nrow(transect_IDs)) { # calls up each transect_ID of the survey_type and performs the following:
+  ## adding in years
+swath_target_den$year[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$year))] =
+swath_target_den$year[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$year))][1]
+ ## adding in months
+swath_target_den$month[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$month))] =
+swath_target_den$month[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$month))][1]
+
+ ## adding in days
+swath_target_den$day[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$day))] =
+swath_target_den$day[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$day))][1]
+
+
+ ## adding in sites
+swath_target_den$site[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$site))] =
+swath_target_den$site[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$site))][1]
+ ## adding in subsites
+swath_target_den$subsite[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$subsite))] =
+swath_target_den$subsite[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$subsite))][1]
+
+}
+
+#### Adding back metadata to new KELPUR rows based on transect_ID ####
+survey_name = 'KELPUR'
+transect_IDs = as.data.frame(swath_target_den %>% filter(survey_type == survey_name) %>% distinct(transect_ID) %>% ungroup() %>% select(transect_ID)) # create list of transect_IDs that exist for each survey_type so I can call them all up in the for loop below.
+
+for (i in 1:nrow(transect_IDs)) { # calls up each transect_ID of the survey_type and performs the following:
+  ## adding in years
+swath_target_den$year[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$year))] =
+swath_target_den$year[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$year))][1]
+ ## adding in months
+swath_target_den$month[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$month))] =
+swath_target_den$month[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$month))][1]
+
+ ## adding in days
+swath_target_den$day[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$day))] =
+swath_target_den$day[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$day))][1]
+
+
+ ## adding in sites
+swath_target_den$site[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$site))] =
+swath_target_den$site[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$site))][1]
+ ## adding in subsites
+swath_target_den$subsite[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$subsite))] =
+swath_target_den$subsite[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$subsite))][1]
+
+}
+#### Adding back metadata to new KELPUR-GFA rows based on transect_ID ####
+survey_name = 'KELPUR-GFA'
+transect_IDs = as.data.frame(swath_target_den %>% filter(survey_type == survey_name) %>% distinct(transect_ID) %>% ungroup() %>% select(transect_ID)) # create list of transect_IDs that exist for each survey_type so I can call them all up in the for loop below.
+
+for (i in 1:nrow(transect_IDs)) { # calls up each transect_ID of the survey_type and performs the following:
+  ## adding in years
+swath_target_den$year[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$year))] =
+swath_target_den$year[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$year))][1]
+ ## adding in months
+swath_target_den$month[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$month))] =
+swath_target_den$month[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$month))][1]
+
+ ## adding in days
+swath_target_den$day[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$day))] =
+swath_target_den$day[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$day))][1]
+
+
+ ## adding in sites
+swath_target_den$site[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$site))] =
+swath_target_den$site[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$site))][1]
+ ## adding in subsites
+swath_target_den$subsite[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$subsite))] =
+swath_target_den$subsite[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$subsite))][1]
+
+}
+
+#### Adding back metadata to new algae_swath surveys ####
+survey_name = 'algae_swath'
+transect_IDs = as.data.frame(swath_target_den %>% filter(survey_type == survey_name) %>% distinct(transect_ID) %>% ungroup() %>% select(transect_ID)) # create list of transect_IDs that exist for each survey_type so I can call them all up in the for loop below.
+# transects 1 and 2 never had any algae_swaths, so there is no metadata. If I add one in manually it should be okay.
+
+for (i in 1:nrow(transect_IDs)) { # calls up each transect_ID of the survey_type and performs the following:
+  ## adding in years
+swath_target_den$year[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$year))] =
+swath_target_den$year[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$year))][1]
+ ## adding in months
+swath_target_den$month[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$month))] =
+swath_target_den$month[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$month))][1]
+
+ ## adding in days
+swath_target_den$day[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$day))] =
+swath_target_den$day[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$day))][1]
+
+
+ ## adding in sites
+swath_target_den$site[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$site))] =
+swath_target_den$site[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$site))][1]
+ ## adding in subsites
+swath_target_den$subsite[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$subsite))] =
+swath_target_den$subsite[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$subsite))][1]
+
+}
+
+#### Adding back metadata to new invert_swath surveys ####
+survey_name = 'invert_swath'
+transect_IDs = as.data.frame(swath_target_den %>% filter(survey_type == survey_name) %>% distinct(transect_ID) %>% ungroup() %>% select(transect_ID)) # create list of transect_IDs that exist for each survey_type so I can call them all up in the for loop below.
+
+for (i in 1:nrow(transect_IDs)) { # calls up each transect_ID of the survey_type and performs the following:
+  ## adding in years
+swath_target_den$year[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$year))] =
+swath_target_den$year[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$year))][1]
+ ## adding in months
+swath_target_den$month[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$month))] =
+swath_target_den$month[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$month))][1]
+
+ ## adding in days
+swath_target_den$day[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$day))] =
+swath_target_den$day[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$day))][1]
+
+
+ ## adding in sites
+swath_target_den$site[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$site))] =
+swath_target_den$site[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$site))][1]
+ ## adding in subsites
+swath_target_den$subsite[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  is.na(swath_target_den$subsite))] =
+swath_target_den$subsite[which(
+                                  swath_target_den$survey_type == survey_name &
+                                  swath_target_den$transect_ID == transect_IDs[i,1] &
+                                  !is.na(swath_target_den$subsite))][1]
+
+}
+
+#####
+# Now if we didn't observe a classcode, it has density set to 0. 
+
+# save this as a .csv, which is what is uploaded onto the GFCBNMS server.
+# write_csv(swath_target_den, 'GFNMS_swath_target_surveys_2022-2025_20260223.csv') # update the date before execution.
+
+```
+
+```{r inventory of surveys}
+tot_survey_site_month %>% 
+  flextable() %>% 
+  flextable::set_caption("Number of survey types completed by month and site") # I can't figure out how to alphabetize the survey_types. Seems pretty basic but is very broken. 
+
+# Table showing number of surveys per type per year
+tot_survey_site_year <- tot_survey_site_month %>% 
+  group_by(year, site, survey_type) %>% 
+  summarise(N_yr = sum(N)) 
+
+tot_survey_site_year %>% 
+  flextable() %>% 
+  flextable::set_caption("Number of survey types completed by year and site") 
+
+ggplot(tot_survey_site_year, aes(x = year, y = N_yr, color = survey_type)) +
+  facet_wrap(~site) +
+  geom_point(size = 4, position = position_dodge(.5)) +
+  theme_bw() + theme(axis.text = element_text(size = 12), axis.title = element_text(size = 14), panel.grid.major.x = element_blank(), axis.text.x = element_text(angle = 40, hjust = 1), strip.text = element_text(size = 20))
+
+```
+
+```{r species code key}
+# table with species codes
+read_csv('Species codes.csv') %>% 
+  flextable() %>% 
+  width(width = 1.5) %>% 
+  set_caption('Species code key')
+```

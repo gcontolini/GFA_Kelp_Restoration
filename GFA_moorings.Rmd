@@ -1,0 +1,43 @@
+---
+title: "Buoy46013 temp data"
+author: "Gina Contolini"
+date: "`r Sys.Date()`"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(include = FALSE)
+library(tidyverse)
+```
+
+```{r load data}
+frchobos2024 <- read_csv('4MAB 2025-01-13 11_32_36 PST (Data PST).csv') %>%
+  mutate(date = mdy_hms(`Date-Time (PST/PDT)`)) %>% 
+  mutate(year = year(date), month = month(date), day = day(date))
+
+glimpse(frchobos2024)
+
+ggplot(frchobos2024, aes(x = date, y = `Temperature   (°C)`)) +
+  geom_point()
+
+```
+
+```{r plot daily mean sea temps over time}
+frchobos2024 %>% 
+  group_by(year, month, day) %>% 
+  summarise(mean_daily_temp = mean(`Temperature   (°C)`), sd_daily_temp = sd(`Temperature   (°C)`), max_daily_temp = max(`Temperature   (°C)`)) %>% 
+  mutate(date = ymd(paste(year, month, day, sep = '-'))) %>% 
+  ggplot(aes(x = date, y = mean_daily_temp)) +
+  geom_point(aes(x = date, y = max_daily_temp, color = 'max'), size = 1.1) +
+  geom_errorbar(aes(ymin = mean_daily_temp - sd_daily_temp, ymax = mean_daily_temp + sd_daily_temp, width = 0), color = 'turquoise') +
+  geom_point(aes(color = 'mean ± SD')) +
+  scale_x_date(date_breaks = '2 weeks') +
+  labs(y = 'Temperature (C)') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 30, vjust = 1, hjust = 1), legend.position = c(.2, .8)) +
+  ggtitle('Daily water temps from Scripps HOBO logger at FRC')
+
+```
+

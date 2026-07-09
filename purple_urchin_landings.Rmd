@@ -1,0 +1,1036 @@
+---
+title: "Preliminary Summary of Urchin Removals in Sonoma County"
+subtitle: "By Gina Contolini. Greater Farallones Association, NOAA Affiliate"
+author: "Greater Farallones and Cordell Bank National Marine Sanctuaries"
+date: "Updated on `r Sys.Date()` except for Shell Beach"
+header-includes:
+- \usepackage{float}
+- \floatplacement{figure}{H}
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(flextable)
+library(bookdown)
+library(scales) # to get commas in the axis labels
+library(RColorBrewer)
+library(ggmap)
+library(maps)
+library(ggspatial) # for map scale bar
+library(cowplot) # to overlay maps
+library(maps) # it just told me I need to install this
+library(mapdata) # to do fancy stuff with maps 
+# library(Rtools) # needed to install maptools below
+# library(maptools) # more fancy map stuff. Not available for this version of R
+library(MASS) # for kernel density
+library(sp) # for mapping kernel density
+library(plotly) # allows you to see details on points on a ggplot by mousing over
+library(egg)
+
+set_flextable_defaults(
+  text.align = "center",
+  header.align = "center"
+)
+
+urchin_purple_light = 'orchid2'
+urchin_purple_dark = 'mediumpurple1'
+
+# set ggplot theme
+theme_set(theme( 
+   panel.background = element_rect(fill = 'transparent', color = NA_character_), # transparent panel background
+   plot.background = element_rect(fill = 'transparent', color = NA_character_), #transparent plot bkgd
+   panel.grid = element_line(color = 'transparent'), # remove all grid lines
+   panel.border = element_blank(),
+   axis.text = element_text(size = 13,color = 'black'), # makes axis labels bigger
+   axis.title = element_text(size = 15), #makes axis title bigger and bold
+   axis.ticks.x = element_blank(),
+   # axis.title.y = element_text(margin=margin(0,10,0,5)), # pushes the y axis title away from the y axis labels
+   # axis.text.x = element_text(margin=margin(0,0,20,0)), #pushes the x axis title away from the x axis labels and pushes the bars down closer to the x axis labels
+   legend.title = element_text(size = 16),
+   legend.text = element_text(size = 16),
+   legend.background = element_rect(fill = 'transparent', color = NA_character_),
+   axis.line = element_line(color = 'black'),
+   plot.title = element_text(size = 15),
+   legend.key = element_rect(fill = 'transparent')
+   # panel.grid.minor.x = element_blank(), # remove minor x axis grid line
+   # panel.grid.major.x = element_blank(), # remove major x axis grid line
+))
+
+transparent_theme <- theme(
+    panel.background = element_rect(fill='transparent', color = NA_character_), #transparent panel bg
+    plot.background = element_rect(fill='transparent', color = NA_character_), #transparent plot bg
+    panel.grid.major = element_blank(), #remove major gridlines
+    panel.grid.minor = element_blank(), #remove minor gridlines
+    legend.background = element_rect(fill='transparent', color = NA_character_), #transparent legend bg
+    legend.box.background = element_rect(fill='transparent', color = NA_character_) #transparent legend panel
+  ) # to print a transparent bg plot, use this theme and ggsave("plot.png", plot, bg = "transparent")
+
+map_theme <- theme( 
+   panel.background = element_rect(fill = 'transparent', color = NA_character_), # transparent panel background
+   plot.background = element_rect(fill = 'transparent', color = NA_character_), #transparent plot bkgd
+   panel.grid = element_line(color = 'transparent'), # remove all grid lines
+   panel.border = element_blank(),
+   axis.title = element_text(size = 15), #makes axis title bigger and bold
+   legend.title = element_text(size = 12),
+   legend.background = element_rect(fill = 'transparent', color = NA_character_),
+   axis.line = element_blank(),
+   plot.title = element_text(size = 15),
+   legend.key = element_rect(fill = 'transparent'),
+  axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+  axis.ticks.x = element_line(),
+  legend.text = element_text(size = 11),
+  axis.text = element_text(size = 10)
+)
+```
+
+```{r load data, include = FALSE}
+landings <- 
+  read_csv('Purple urchin landings datasheet - load_to_R.csv', 
+    col_types = list(
+        price_per_pound = readr::col_number() # read as num not $
+        ,tot_payment     = readr::col_number()  # read as num not $
+        ,min_depth_ft    = readr::col_number()
+        ,max_depth_ft    = readr::col_number()
+        ,min_to_site     = readr::col_number()
+        ,min_to_harbor   = readr::col_number()
+        ,start_lat_dec   = readr::col_number()
+        ,start_lon_dec   = readr::col_number()
+         )
+) %>% 
+  mutate(collection_date = ymd(collection_date)) %>% 
+  mutate(landing_date = ymd(landing_date)) %>% 
+  mutate(year = year(collection_date)) %>% # make a year column
+  mutate(month = month(collection_date)) # make a month column
+  # The warning message about parsing is because I wrote "see above" so much. Ignore it.
+
+# Change factor names for prettiness
+landings$site[which(landings$site == 'Fort_Ross')] = "Fort Ross"
+
+# Change years and months to factors
+landings$year = factor(landings$year, levels = c(2023, 2024, 2025, 2026))
+landings$month = factor(landings$month, levels = c(5, 6, 7, 8, 9, 10, 11))
+
+glimpse(landings)
+
+## Load etix landings data 
+etix <- read_csv('ETixReport.csv') %>% # note you have to delete the first two rows if using report directly from etix
+  filter(!`Is Void` == TRUE) %>% 
+  mutate(date = mdy(`Landing Date`)) %>% 
+  select(date, `Fisher Last Name`, `Gross Pounds`, `Price Per Pound`) %>% 
+  rename(lbs_urchins = `Gross Pounds`, diver_name = `Fisher Last Name`, price_per_lb = `Price Per Pound`) %>% 
+  mutate(year = year(date), month = month(date))
+
+etix$month = factor(etix$month, levels = 1:12)
+etix$year = factor(etix$year, levels = c(2023, 2024, 2025, 2026))
+
+glimpse(etix)
+```
+
+```{r check for match between our data and etix, include = FALSE}
+landings_test <- landings %>% 
+  # filter(year == 2025) %>% 
+  group_by(year, month, diver_name) %>% 
+  summarise(tot_lbs = sum(lbs_urchins, na.rm = T), n = n()) 
+
+landings_test$diver_name[which(landings_test$diver_name == 'G. Trumper')] = 'Trumper'
+
+etix_test <- etix %>% 
+  group_by(year, month, diver_name) %>% 
+  summarise(report_lbs = sum(lbs_urchins, na.rm = T), n_report = n()) 
+
+left_join(landings_test, etix_test) %>% 
+  mutate(dif = tot_lbs - report_lbs) %>% 
+  select(month, diver_name, tot_lbs, report_lbs, dif, n, n_report) %>% 
+  filter(!dif == 0) %>% 
+  flextable()
+
+# Please note Owen had one landing of 396 lbs before we started using etix, so there will always be a difference of 396 for Owen in 2023. 
+
+```
+
+```{r set conversion values pounds to urchins, include = FALSE}
+ frc_no_urc_per_lb_23 = 11.8337820 # values from 2023
+ tc_no_urc_per_lb_23 = 7.39564312 # values from 2023
+
+# update on 2024-10-28
+# frc is on average 39.1 g per urchin, or 0.08620081 lb per urchin. that's 11.60082 urchins per pound.
+# tc is on average 50.5 g per urchin, or 8.98202 lb per urchin. That's 8.98202 urchins per pound.
+frc_no_urc_per_lb_24 = 11.60082
+tc_no_urc_per_lb_24 = 8.98202
+
+# update on 2026-01-23
+# 453.592 g / 1 lb.
+## frc is on average 33.07378 g per urchin, which is 0.0729 lb. 
+## tc is on average 28.25084 g per urchin
+frc_no_urc_per_lb_25 = 13.71455 # 453.592 / 33.07378
+tc_no_urc_per_lb_25 = 16.05588 # 453.592 / 28.25084 
+oc_no_urc_per_lb_25 = 9.6256 # 47.125 g / urchin = 0.10389 lbs / urchin.
+
+```
+
+# Tables
+```{r tables}
+# Summary table of landings by site only
+site_lbs_sum <- landings %>%
+  dplyr::group_by(year, site) %>%
+  dplyr::summarize(total_landings_lbs = sum(lbs_urchins, na.rm = T), days = sum(days_diving, na.rm = T), mean_min_ft = mean(min_depth_ft, na.rm = T), mean_max_ft = mean(max_depth_ft, na.rm = T)) %>%
+  mutate(approx_no_urchins = 
+           if_else(site == 'Fort Ross' & year == 2023,
+              total_landings_lbs * frc_no_urc_per_lb_23,
+              total_landings_lbs * frc_no_urc_per_lb_24)) %>% 
+  mutate(approx_no_urchins =
+           if_else(site == 'Fort Ross' & year == 2025,
+                   total_landings_lbs * frc_no_urc_per_lb_25,
+                   approx_no_urchins)) %>% 
+mutate(approx_no_urchins = 
+           if_else(site == 'Timber' & year == 2023,
+              total_landings_lbs * tc_no_urc_per_lb_23,
+              total_landings_lbs * tc_no_urc_per_lb_24)) %>% 
+mutate(approx_no_urchins =
+           if_else(site == 'Timber' & year == 2025,
+                   total_landings_lbs * tc_no_urc_per_lb_25,
+                   approx_no_urchins)) %>% 
+mutate(approx_no_urchins = 
+         if_else(site == 'Shell', 
+                 NA,
+                 approx_no_urchins)) %>% 
+  ungroup()
+
+site_lbs_sum %>%
+  group_by(year, site) %>% 
+  summarize(total_landings_lbs = sum(total_landings_lbs), days = sum(days), approx_no_urchins = sum(approx_no_urchins)) %>% 
+  flextable()
+
+site_lbs_sum %>%
+  select(year, site, total_landings_lbs, days, mean_min_ft, mean_max_ft, approx_no_urchins) %>% 
+  flextable() %>%
+  labelizor(part = "header", labels = c("site" = "Site", "year" = "Year", 'total_landings_lbs' = 'Landings (lbs)', 'days' = 'Diver days', "mean_min_ft" = "Average min depth (ft.)", "mean_max_ft" = "Average max depth (ft.)", 'approx_no_urchins' = 'Approx. no. urchins')) %>% 
+  flextable::set_caption("Landings and effort per site per year to update date") %>% 
+  colformat_double(j = c(4, 5, 6), digits = 0)
+
+## Fort Ross and Timber only for manuscript.
+landings_ms_sum <- site_lbs_sum %>%
+  filter(site %in% c('Fort Ross', 'Timber'), year %in% 2023:2025) %>% 
+  select(year, site, total_landings_lbs, days, approx_no_urchins)
+
+flextable(landings_ms_sum) %>%
+  labelizor(part = "header", labels = c("site" = "Site", "year" = "Year", 'total_landings_lbs' = 'Landings (lbs)', 'days' = 'Diver days', 'approx_no_urchins' = 'Approx. no. urchins')) %>% 
+  # flextable::set_caption("Landings and effort per site per year") %>% 
+  colformat_double(j = c(4, 5), digits = 0)
+
+##### 2025 only #####
+# landings per site
+landings_2025_site <- landings %>%
+  dplyr::filter(year == 2025) %>% 
+  dplyr::group_by(site) %>%
+  dplyr::summarize(total_landings_lbs = sum(lbs_urchins, na.rm = T), diver_days = sum(days_diving, na.rm = T)) %>% 
+  dplyr::mutate(approx_no_urchins = 
+                  if_else(site == 'Fort Ross',
+                          total_landings_lbs * frc_no_urc_per_lb_25,
+                          total_landings_lbs * tc_no_urc_per_lb_25
+                         )
+                ) %>% 
+  mutate(approx_no_urchins = 
+           if_else(site == 'Ocean',
+                   total_landings_lbs * oc_no_urc_per_lb_25,
+                   approx_no_urchins
+           )
+         ) %>% 
+  mutate(approx_no_urchins = 
+           if_else(site == 'Shell',
+                   NA,
+                   approx_no_urchins
+           )
+         )
+
+landings_2025_tot <- landings_2025_site %>%
+  dplyr::summarize(total_landings_lbs = sum(total_landings_lbs), diver_days = sum(diver_days), approx_no_urchins = sum(approx_no_urchins)) %>%
+    mutate(site = 'Total')
+
+landings_2025_sum <- rbind(landings_2025_site, landings_2025_tot)
+  
+flextable(landings_2025_sum)  %>% 
+  flextable::set_caption("Landings and effort per site in 2025") %>% 
+  labelizor(part = "header", labels = c("site" = "Site", 'total_landings_lbs' = 'Landings (lbs)', 'diver_days' = 'Diver days', 'approx_no_urchins' = 'Approx. no. urchins'))  %>% 
+  colformat_double(j = 4, digits = 0)
+
+# Number of pounds removed per diver per hour
+
+landings_2025_site_hrs <- landings %>%
+  dplyr::filter(year == 2025) %>% 
+  dplyr::filter(!is.na(tot_bottom_hrs) & !lbs_urchins == 0) %>% # only rows with bottom times and landings
+  dplyr::group_by(site) %>%
+  dplyr::summarize(total_landings_lbs = sum(lbs_urchins, na.rm = T), diver_days = sum(days_diving, na.rm = T), tot_hrs = sum(tot_bottom_hrs)) %>% 
+  mutate(mean_hrs_per_day = tot_hrs / diver_days) %>% 
+  select(!c(total_landings_lbs, diver_days, tot_hrs))
+
+mean_urch_per_hr <- right_join(landings_2025_site, landings_2025_site_hrs) %>% 
+  mutate(est_tot_hrs = diver_days * mean_hrs_per_day) %>% 
+  mutate(mean_urch_per_hr = approx_no_urchins / est_tot_hrs) %>% 
+  mutate(mean_lbs_per_hr = total_landings_lbs / est_tot_hrs)
+################## THIS IS THE ONE
+
+ggplot(mean_urch_per_hr, aes(x = site, y = mean_lbs_per_hr)) +
+   geom_col() +
+   scale_y_continuous(expand = c(0,0), limits = c(0, 210)) +
+   geom_text(aes(label = round(mean_lbs_per_hr, 0)), y = mean_urch_per_hr$mean_lbs_per_hr + 9, size = 7) +
+   labs(x = '', y = 'Estimated lbs per hour') +
+   theme(axis.title = element_text(size = 25), axis.text = element_text(size = 20)) 
+
+ggplot(mean_urch_per_hr, aes(x = site, y = mean_urch_per_hr)) +
+   geom_col() +
+   scale_y_continuous(expand = c(0,0), limits = c(0, 1700)) +
+   geom_text(aes(label = round(mean_urch_per_hr, 0)), y = mean_urch_per_hr$mean_urch_per_hr + 70, size = 7) +
+   labs(x = '', y = 'Estimated urchins per hour') +
+   theme(axis.title = element_text(size = 25), axis.text = element_text(size = 20)) 
+
+# so for example, how long would it take to remove urchins to 2 m-2 in a 30 x 2 m area if it started at 20 urchins m-2.
+# Total urchins: 20 * 60 = 1200 urchins total. 
+# Desired urchins: 2 * 60 = 120. 
+# Amt to remove: 1200 - 120 = 1080
+## Fort Ross: 1080 urchins / 867 urchins removed per hr = 1.25 hr.
+## Timber rate: 1080 / 1161 = 0.93 hr or 56 min.
+## Ocean rate: 1080 / 1421 = 46 min.
+## Average rate: 1080 / 1149.414 = 56 min.
+ 
+# Lbs urchins removed per diver
+lbs_diver_hr_25 <- landings %>% 
+  dplyr::filter(!is.na(tot_bottom_hrs)) %>% # only consider data with hours recorded
+  group_by(year) %>% 
+  dplyr::mutate(lbs_per_hr = lbs_urchins / tot_bottom_hrs) %>% 
+  # dplyr::mutate(urch_per_hr = 
+  #                 if_else(site == 'Timber', tc_no_urc_per_lb  * lbs_urchins, frc_no_urc_per_lb * lbs_urchins) # this only works when there are only two sites
+  #               ) %>% 
+  dplyr::group_by(diver_name) %>%
+  dplyr::summarise(min_lbs_hr = min(lbs_per_hr, na.rm = T), 
+                   max_lbs_hr = max(lbs_per_hr, na.rm = T),
+                   mean_lbs_per_hr = mean(lbs_per_hr, na.rm = T), 
+                   SD_lbs_per_hr = sd(lbs_per_hr, na.rm = T), 
+                   # min_urch_hr   = min(urch_per_hr, na.rm = T),
+                   # max_urch_hr   = max(urch_per_hr, na.rm = T),
+                   # mean_urch_hr = mean(urch_per_hr, na.rm = T), 
+                   # SD_urch_hr = sd(urch_per_hr, na.rm = T), N = n()
+                   )
+lbs_diver_hr_25 %>% 
+  summarize(mean_lbs_hr = mean(mean_lbs_per_hr), SD_lbs_hr = sd(mean_lbs_per_hr)) %>% 
+  as.data.frame() # to prevent truncation
+
+######
+
+# Summary table of landings by site and vessel
+effort_per_site_per_vessel <- landings %>%
+  # dplyr::filter(!is.na(lbs_urchins)) %>% 
+  dplyr::group_by(site, vessel) %>%
+  dplyr::summarize(total_landings_lbs = sum(lbs_urchins, na.rm = T), days = sum(days_diving, na.rm = T), mean_hrs_per_day = mean(tot_bottom_hrs, na.rm = T)) %>% 
+  mutate(Tot_hrs = days * mean_hrs_per_day) %>% 
+  mutate(`Lbs per hr` = total_landings_lbs/Tot_hrs)
+
+effort_per_site_per_vessel %>% 
+  flextable()  %>% 
+  flextable::set_caption("Landings and effort per site per vessel Sep 2023 to update date") %>% 
+  labelizor(part = "header", labels = c("site" = "Site", "vessel" = "Vessel", 'total_landings_lbs' = 'Landings (lbs)', 'days' = 'Diver days')) %>% 
+  colformat_double(j = 5:7, digits = 2)
+
+mean(effort_per_vessel$`Lbs per hr`)
+sum(effort_per_vessel$days)
+
+# Number of pounds removed per diver per hour
+
+lbs_diver_hr <- landings %>% 
+  dplyr::filter(!is.na(tot_bottom_hrs)) %>% # only consider data with hours recorded
+  dplyr::mutate(lbs_per_hr = lbs_urchins / tot_bottom_hrs) %>% 
+  # dplyr::mutate(urch_per_hr = 
+  #                 if_else(site == 'Timber', tc_no_urc_per_lb  * lbs_urchins, frc_no_urc_per_lb * lbs_urchins) # this only works when there are only two sites
+  #               ) %>% 
+  dplyr::group_by(diver_name) %>%
+  dplyr::summarise(min_lbs_hr = min(lbs_per_hr, na.rm = T), 
+                   max_lbs_hr = max(lbs_per_hr, na.rm = T),
+                   mean_lbs_per_hr = mean(lbs_per_hr, na.rm = T), 
+                   SD_lbs_per_hr = sd(lbs_per_hr, na.rm = T), 
+                   # min_urch_hr   = min(urch_per_hr, na.rm = T),
+                   # max_urch_hr   = max(urch_per_hr, na.rm = T),
+                   # mean_urch_hr = mean(urch_per_hr, na.rm = T), 
+                   # SD_urch_hr = sd(urch_per_hr, na.rm = T), N = n()
+                   )
+lbs_diver_hr %>% 
+  summarize(mean_lbs_hr = mean(mean_lbs_per_hr), SD_lbs_hr = sd(mean_lbs_per_hr)) %>% 
+  as.data.frame() # to prevent truncation
+
+### Unique landing dates
+# landings %>%
+#   dplyr::filter(collection_date > ymd('2024-06-30') & collection_date < ymd('2025-12-19')) %>%
+#   # I want a list of dates urchins were collected by site.
+#   dplyr::group_by(site) %>%
+#   dplyr::reframe(collect_dates = unique(collection_date)) %>%
+#   dplyr::mutate(month = month(collect_dates), day = day(collect_dates), collect_dates = NULL) %>% 
+#   flextable() %>%
+#   flextable::set_caption("Unique landing dates per site 2024-07-01 to 2024-12-19")
+  
+### Landings per diver for 2025 only
+landings %>%
+  dplyr::filter(collection_date > ymd('2024-12-31') & collection_date < ymd('2026-01-01') & !is.na(days_diving)) %>%
+  dplyr::group_by(diver_name) %>%
+  dplyr::summarize(total_landings_lbs = sum(lbs_urchins, na.rm = T), diver_days = sum(days_diving)) %>%
+  flextable()  %>%
+  flextable::set_caption("Landings and effort per diver 2025") %>%
+  labelizor(part = "header", labels = c("diver_name" = "Diver name", 'total_landings_lbs' = 'Landings (lbs)', 'diver_days' = 'Diver days'))
+
+# Mean pounds landed per day per vessel
+landings %>% 
+  dplyr::group_by(vessel) %>% 
+  dplyr::summarise(mean_lbs = mean(lbs_urchins, na.rm = T), sd_lbs = sd(lbs_urchins, na.rm = T), n = sum(days_diving, na.rm = T)) %>% 
+  flextable() %>% 
+  flextable::set_caption("Mean lbs landed per vessel per landing Sep 2023 to update date") %>% 
+  labelizor(part = 'header', labels = c('vessel' = 'Vessel', 'mean_lbs' = 'Mean lbs', 'sd_lbs' = 'SD lbs', 'n' = 'N')) %>% 
+  flextable::footnote(i=1:3, j=1, value = as_paragraph('Sometimes landed urchins after multiple days of collecting')) %>% 
+  colformat_double(j = c(2:3), digits = 2)
+
+# Mean hours spent diving per day per diver
+landings %>% 
+  dplyr::group_by(diver_name) %>% 
+  dplyr::summarise(mean_hrs = mean(tot_bottom_hrs, na.rm = T), sd_hrs = sd(tot_bottom_hrs, na.rm = T), n = n()) %>% 
+  flextable() %>% 
+  flextable::set_caption("Hours diving per diver per day Sep 2023 to update date") %>% 
+  labelizor(part = 'header', labels = c('diver_name' = 'Diver name', 'mean_hrs' = 'Mean hrs', 'sd_hrs' = 'SD hrs', 'n' = 'N')) %>% 
+  colformat_double(j = c(2:3), digits = 2)
+
+#### Summarize pounds per diver per hour without grouping by diver first. Overall mean ####
+# landings %>% 
+#   dplyr::filter(!(is.na(tot_bottom_hrs) | is.na(lbs_urchins))) %>% # only consider rows with hours and lbs recorded
+#   dplyr::mutate(lbs_per_hr = lbs_urchins / tot_bottom_hrs) %>% 
+#   dplyr::mutate(urch_per_hr = 
+#                   if_else(site == 'Timber', tc_no_urc_per_lb  * lbs_urchins, frc_no_urc_per_lb * lbs_urchins) # this only works when there are only two sites
+#                 ) %>% 
+#   dplyr::summarise(min_lbs_hr = min(lbs_per_hr, na.rm = T), 
+#                    max_lbs_hr = max(lbs_per_hr, na.rm = T),
+#                    mean_lbs_hr = mean(lbs_per_hr, na.rm = T), 
+#                    SD_lbs_hr = sd(lbs_per_hr, na.rm = T), 
+#                    min_urch_hr   = min(urch_per_hr, na.rm = T),
+#                    max_urch_hr   = max(urch_per_hr, na.rm = T),
+#                    mean_urch_hr = mean(urch_per_hr, na.rm = T), 
+#                    SD_urch_hr = sd(urch_per_hr, na.rm = T), 
+#                    N = n()) %>% 
+#   flextable(col_keys = c('min_lbs_hr', 'max_lbs_hr', 'mean_lbs_hr', 'SD_lbs_hr', 'col1', 'min_urch_hr', 'max_urch_hr', 'mean_urch_hr', 'SD_urch_hr', 'col2', 'N')) %>% #to add col breaks
+#     flextable::width(j = c('col1','col2'), width = 0.2) %>% #to add col breaks
+#     flextable::empty_blanks() %>% #to add col breaks
+#     flextable::labelizor(part = 'header', labels = c('min_lbs_hr' = 'Min lbs', 'max_lbs_hr' = 'Max lbs', 'mean_lbs_hr' = 'Mean lbs', 'SD_lbs_hr' = 'SD lbs', 'min_urch_hr' = 'Min urchins', 'max_urch_hr' = 'Max urchins', 'mean_urch_hr' = 'Mean urchins', 'SD_urch_hr' = 'SD urchins')) %>% 
+#     flextable::add_header_row(values = c('Pounds per hour', ' ', 'Number of urchins per hour', ' '), colwidths = c(4, 1, 4, 2)) %>% 
+#     colformat_double(j = c(3:8), digits = 2) %>% 
+#     flextable::set_caption("Hourly effort per diver Sep 2023 to Nov 2024") %>% 
+#     flextable::align(align = 'center') %>% #center the cell contents
+#     flextable::align(align = 'center', part = 'header') #center the headers
+
+## Hourly effort per diver for just 2023
+landings %>% 
+  dplyr::filter(!(is.na(tot_bottom_hrs) | is.na(lbs_urchins))) %>% # only consider rows with hours and lbs recorded
+  dplyr::filter(landing_date < ymd('2024-01-01')) %>% # Only dates before 2024
+  dplyr::mutate(lbs_per_hr = lbs_urchins / tot_bottom_hrs) %>% 
+  dplyr::mutate(urch_per_hr = 
+                  if_else(site == 'Timber', tc_no_urc_per_lb_23  * lbs_urchins, frc_no_urc_per_lb_23 * lbs_urchins) # this only works when there are only two sites
+                ) %>% 
+  dplyr::summarise(min_lbs_hr = min(lbs_per_hr, na.rm = T), 
+                   max_lbs_hr = max(lbs_per_hr, na.rm = T),
+                   mean_lbs_hr = mean(lbs_per_hr, na.rm = T), 
+                   SD_lbs_hr = sd(lbs_per_hr, na.rm = T), 
+                   # min_urch_hr   = min(urch_per_hr, na.rm = T),
+                   # max_urch_hr   = max(urch_per_hr, na.rm = T),
+                   mean_urch_hr = mean(urch_per_hr, na.rm = T),
+                   # SD_urch_hr = sd(urch_per_hr, na.rm = T), 
+                   N = n()) %>% 
+  flextable() %>% 
+  # flextable(col_keys = c('min_lbs_hr', 'max_lbs_hr', 'mean_lbs_hr', 'SD_lbs_hr', 'col1', 'min_urch_hr', 'max_urch_hr', 'mean_urch_hr', 'SD_urch_hr', 'col2', 'N')) %>% #to add col breaks
+    # flextable::width(j = c('col1','col2'), width = 0.2) %>% #to add col breaks
+    # flextable::empty_blanks() %>% #to add col breaks
+    flextable::labelizor(part = 'header', labels = c('min_lbs_hr' = 'Min', 'max_lbs_hr' = 'Max', 'mean_lbs_hr' = 'Mean', 'mean_urch_hr' = 'Mean urchins', 'SD_lbs_hr' = 'SD')) %>% 
+    # flextable::add_header_row(values = c('Pounds per hour', ' ', 'Number of urchins per hour', ' '), colwidths = c(4, 1, 4, 2)) %>% 
+    colformat_double(j = c(1:5), digits = 2) %>%
+    flextable::set_caption("Hourly effort per diver (lbs urchins removed) Sep to Nov 2023") %>% 
+    flextable::align(align = 'center') %>% #center the cell contents
+    flextable::align(align = 'center', part = 'header') #center the headers
+
+## Hourly effort per diver for just 2024
+landings %>% 
+  dplyr::filter(!(is.na(tot_bottom_hrs) | is.na(lbs_urchins))) %>% # only consider rows with hours and lbs recorded
+  dplyr::filter(landing_date > ymd('2024-01-01')) %>% 
+  dplyr::filter(landing_date < ymd('2025-01-01')) %>% # Only dates after Jan 2024 and before 2025
+  dplyr::mutate(lbs_per_hr = lbs_urchins / tot_bottom_hrs) %>% 
+  dplyr::mutate(urch_per_hr = 
+                  if_else(site == 'Timber', tc_no_urc_per_lb  * lbs_urchins, frc_no_urc_per_lb * lbs_urchins) # this only works when there are only two sites, so it needs an update #***
+                ) %>% 
+  dplyr::summarise(min_lbs_hr = min(lbs_per_hr, na.rm = T), 
+                   max_lbs_hr = max(lbs_per_hr, na.rm = T),
+                   mean_lbs_hr = mean(lbs_per_hr, na.rm = T), 
+                   SD_lbs_hr = sd(lbs_per_hr, na.rm = T), 
+                   # min_urch_hr   = min(urch_per_hr, na.rm = T),
+                   # max_urch_hr   = max(urch_per_hr, na.rm = T),
+                   mean_urch_hr = mean(urch_per_hr, na.rm = T),
+                   # SD_urch_hr = sd(urch_per_hr, na.rm = T), 
+                   N = n()) %>% 
+  flextable() %>% 
+    flextable::labelizor(part = 'header', labels = c('min_lbs_hr' = 'Min', 'max_lbs_hr' = 'Max', 'mean_lbs_hr' = 'Mean', 'mean_urch_hr' = 'Mean urchins', 'SD_lbs_hr' = 'SD')) %>% 
+    colformat_double(j = c(1:5), digits = 2) %>%
+    flextable::set_caption("Hourly effort per diver (lbs urchins removed) May to Nov 2024") %>% 
+    flextable::align(align = 'center') %>% #center the cell contents
+    flextable::align(align = 'center', part = 'header') #center the headers
+```
+
+```{r OHC reports, include = FALSE}
+start_date <- ymd('2025-10-01')
+end_date <- ymd('2026-03-31')
+
+report_landings <- landings %>% 
+  filter(collection_date >= start_date & collection_date <= end_date) 
+
+report_landings %>% 
+  group_by(vessel, site) %>% 
+  summarise(tot_lbs = sum(lbs_urchins, na.rm = T), diver_days = sum(days_diving, na.rm = T))
+
+```
+
+# Figures and maps
+```{r fig 1, fig.cap = "Dive depths per site Sep 2023 to update date", message = FALSE}
+# dive depths
+landings %>% 
+  pivot_longer(cols = c(min_depth_ft, max_depth_ft), names_to = 'depth_name', values_to = 'depth_ft') %>% 
+  ggplot(aes(x = depth_name, y = depth_ft, fill = site)) +
+  geom_boxplot() +
+  labs(x = '', y = 'Dive depth (ft)') +
+  scale_y_reverse(limits = c(50,0)) 
+  # scale_fill_manual(values = c('skyblue', 'skyblue4'))
+
+```
+
+```{r fig 2, fig.cap = "Pounds urchins removed per diver per hour Sep 2023 to update date", message = FALSE, include = FALSE}
+landings %>% 
+  dplyr::filter(!is.na(tot_bottom_hrs)) %>% # only consider data with hours recorded
+  dplyr::mutate(lbs_per_hr = lbs_urchins / tot_bottom_hrs) %>% 
+  dplyr::mutate(urch_per_hr = 
+                  if_else(site == 'Timber', tc_no_urc_per_lb  * lbs_urchins, frc_no_urc_per_lb * lbs_urchins) # this works when there are only two sites
+                ) %>% 
+  ggplot(aes(x = site, y = lbs_per_hr)) +
+  geom_boxplot() +
+  labs(y = 'Pounds')
+```
+
+```{r fig 3, fig.cap = "Approximate number of urchins removed per diver per hour Sep 2024 to update date", message = FALSE, include = FALSE}
+
+##### NEEDS TO BE UPDATED WITH YEARLY URCHIN WEIGHTS ######
+landings %>% 
+  dplyr::filter(!is.na(tot_bottom_hrs)) %>% # only consider data with hours recorded
+  dplyr::mutate(lbs_per_hr = lbs_urchins / tot_bottom_hrs) %>% 
+  dplyr::mutate(urch_per_hr = 
+                  if_else(site == 'Timber', tc_no_urc_per_lb_24  * lbs_urchins, frc_no_urc_per_lb_24 * lbs_urchins) # this works when there are only two sites
+                ) %>% 
+  ggplot(aes(x = site, y = urch_per_hr)) +
+  geom_boxplot() +
+  scale_y_continuous(label = comma) + # get commas in the y axis
+  labs(y = 'Number of urchins')
+```
+
+```{r fig 4, fig.cap = "Total number of diver days removing urchins by site Sep 2023 to update date", include = FALSE}
+# days
+# png(filename = 'effort_days_site_2023.png', width = 500, height = 400)
+(diver_days_site <- ggplot(site_lbs_sum, aes(x = ' ', y = days, fill = site)) +
+  geom_col() +
+  # scale_fill_manual(values = c(urchin_purple_dark, urchin_purple_light)) +
+  # scale_y_continuous(expand = c(0,0), label = comma, limits = c(0, 200)) + # get commas in the y axis
+  scale_x_discrete(expand = c(0,0)) +
+  labs(x = ' ', y = 'Diver days') +
+  theme(axis.line = element_blank()) +
+  transparent_theme)
+# dev.off()
+```
+
+```{r fig 5, fig.cap = "Total landings by site Sep 2023 to update date", include = FALSE}
+# landings lbs
+# png(filename = 'total_landings_lbs_site_2023.png', width = 500, height = 400)
+landings_proportion_site <- ggplot(site_lbs_sum, aes(x = ' ', y = total_landings_lbs, fill = site)) +
+  geom_col() +
+  # scale_fill_manual(values = c(urchin_purple_dark, urchin_purple_light)) +
+  scale_y_continuous(expand = c(0,0), label = comma) + # get commas in the y axis
+  scale_x_discrete(expand = c(0,0)) +
+  labs(x = ' ', y = 'Landings (lbs)') +
+  theme(axis.line = element_blank()) +
+  transparent_theme
+# dev.off
+
+ggplot(site_lbs_sum, aes(x = site, y = total_landings_lbs)) +
+  geom_col() +
+  labs(y = 'Total landings (lbs)', x = 'Site')
+
+```
+
+```{r fig.cap = "Total landings and effort for Fort Ross and Timber coves Sep 2023 to 2025", include = FALSE}
+#landings
+ggplot(landings_ms_sum, aes(x = paste(year, site), y = total_landings_lbs, fill = site)) +
+  geom_col() +
+  scale_y_continuous(expand = c(0,0), limits = c(0, 40000), breaks = seq(0, 40000, 5000), label = comma) +
+  geom_text(aes(label = scales::comma(total_landings_lbs)), y = landings_ms_sum$total_landings_lbs - 1000, size = 7) +
+  labs(y = 'Landings (lbs)', x = ' ') +
+  theme(axis.text.x = element_text(size = 1))
+
+#days
+ggplot(landings_ms_sum, aes(x = paste(year, site), y = days, fill = site)) +
+  geom_col() +
+  scale_y_continuous(expand = c(0,0), limits = c(0, 100), breaks = seq(0, 100, 10), label = comma) +
+  geom_text(aes(label = scales::comma(days)), y = landings_ms_sum$days - 3, size = 7) +
+  labs(y = 'Effort (diver days)', x = ' ') +
+  theme(axis.text.x = element_text(size = 0))
+
+# approx number of urchins
+ggplot(landings_ms_sum, aes(x = paste(year, site), y = approx_no_urchins, fill = site)) +
+  geom_col() +
+  scale_y_continuous(expand = c(0,0), limits = c(0, 4.5e+05), breaks = seq(0, 4.5e05, 5e04), label = comma) +
+  geom_text(aes(label = scales::comma(approx_no_urchins)), y = landings_ms_sum$approx_no_urchins - 16000, size = 5) +
+  labs(y = 'Approsimate number of\nurchins removed', x = ' ') +
+  theme(axis.text.x = element_text(size = 1))
+
+```
+
+```{r fig 6, fig.cap = "Estimated total number of urchins landed by site Sep 2023 to update date", include = FALSE}
+# approx number of urchins landed
+# png(filename = 'total_landings_num_site_2023.png', width = 500, height = 400)
+site_lbs_sum$hundthoulb <- site_lbs_sum$approx_no_urchins / 100000
+ggplot(site_lbs_sum, aes(x = ' ', y = hundthoulb, fill = site)) +
+  geom_col() +
+  # scale_fill_manual(values = c(urchin_purple_dark, urchin_purple_light)) +
+  # scale_y_continuous(expand = c(0,0), label = comma, limits = c(0, 460000), breaks = seq(0, 450000, 50000)) + # get commas in the y axis
+  scale_x_discrete(expand = c(0,0)) +
+  labs(x = ' ', y = 'Hundreds of thousands\nof urchins') +
+  theme(axis.line = element_blank())
+# dev.off()
+```
+
+```{r fig 7, fig.cap = "Dive time removing urchins by site Sep 2023 to update date", include = FALSE}
+# dive time
+# png(filename = 'effort_hours_site_2023.png', width = 500, height = 400)
+landings %>%
+  dplyr::group_by(site) %>%
+  dplyr::summarize(tot_bottom_hrs = sum(tot_bottom_hrs, na.rm = T)) %>%
+ggplot(aes(x = ' ', y = tot_bottom_hrs, fill = site)) +
+  geom_col() +
+  # scale_fill_manual(values = c(urchin_purple_dark, urchin_purple_light)) +
+  # scale_y_continuous(expand = c(0,0), label = comma, limits = c(0, 700), breaks = seq(0, 700, 100)) + # get commas in the y axis
+  scale_x_discrete(expand = c(0,0)) +
+  labs(x = ' ', y = 'Dive time (hrs)') +
+  theme(axis.line = element_blank())
+# dev.off()
+```
+
+```{r fig.cap = "Frequency of diver days by day of week Sep 2023 to update date", message = FALSE, include = FALSE}
+# Figure showing number of landings per day of week by site.
+landings %>% 
+  dplyr::select(site, collection_date) %>% 
+  # dplyr::distinct(collection_date) %>% # only select unique dates
+  dplyr::mutate(Day = lubridate::wday(collection_date, label = TRUE)) %>%
+  dplyr::group_by(Day) %>%
+  dplyr::summarise(Frequency = n()) %>%
+  ggplot(aes(x = Day, y = Frequency)) +
+  scale_y_continuous(expand = c(0,0), limits = c(0, 80)) +
+  geom_col() 
+  # scale_y_continuous(limits = c(0, 60), expand = c(0,0)) 
+```
+
+```{r tidy up coordinates for Sage for manuscript}
+landings_gfa <- landings %>% 
+  filter(year %in% c(2023:2025)) %>% 
+  filter(!c(landing_date == ymd('2025-08-17') & site == 'Timber')) %>% # remove days worked on other projects. There were about 4 other days they worked on SSU plots for half the day, but I haven't removed those pounds yet because I'll have to subtract just part of the days' landings.
+  mutate(est_area_m2 = if_else(diver_name %in% c('Owen', 'Gmeiner'), 8500, 225)) %>% # add an area col by diver
+  # select(site, collection_date, diver_name, vessel, lbs_urchins, start_lat_dec, start_lon_dec) %>%
+  rename(lat = start_lat_dec, lon = start_lon_dec)
+
+multidays <- landings %>% 
+  count(site, landing_date, diver_name) %>% 
+  rename(trip_days = n) %>% 
+  filter(trip_days > 1) 
+
+  # %>% # these dates and divers are from multiday trips.
+  # right_join(landings_gfa %>% 
+  #            filter(!is.na(lbs_urchins))
+  #          ) %>% 
+  # mutate(lbs_urchins_corrected = lbs_urchins / trip_days) %>% 
+  # ungroup() %>% 
+  # select(site, landing_date, collection_date, diver_name, trip_days, lbs_urchins, lbs_urchins_corrected)
+
+# find all multi day trips in the original.
+landings_sage <- full_join(landings_gfa, multidays) %>% 
+  select(site, collection_date, landing_date, diver_name, vessel, lbs_urchins, trip_days, lat, lon) %>% 
+  mutate(trip_days = replace_na(trip_days, 1)) %>% 
+  mutate(lbs_daily = lbs_urchins / trip_days) # split up lbs_urchins over days with the same landing_date.
+
+# everywhere it says a landing_date and a name, put the non NA lbs_daily.
+landings_nona <- landings_sage %>% 
+  select(site, landing_date, diver_name, lbs_daily) %>% 
+  filter(!is.na(lbs_daily)) 
+
+right_join(landings_nona, landings_sage %>% select(site, collection_date, landing_date, diver_name, vessel, lbs_urchins, trip_days, lat, lon))
+
+```
+
+
+```{r load and tidy up the map data, make outplanting box, and make inset CA map, include = FALSE, message = FALSE}
+# grid coordinates
+frc_grid_coords <- read_csv('Purple urchin landings datasheet - frc_grid_coords.csv')
+frc_grid_corners <- frc_grid_coords %>% filter(Block %in% c('A', 'B', 'C') & !Quad == "Center")
+
+# must get API key first Do the following once per R session:
+ggmap::register_stadiamaps('8d134a7f-55f5-4eac-a02c-eecd8c3d4784') #here's where I got that API key: https://client.stadiamaps.com/dashboard/#/property/19840/. Eventually it will probably expire and I'll have to get a new API key.
+
+# make the restoration grid into an sf object so I can manipulate it #
+# points  <- st_multipoint(as.matrix(frc_grid_coords_dd)) # creates an sf multipoint feature.
+## Still trying to figure out how to make a square and plot it. I think it might be a sf_polygon?
+
+# Create outplanting box 
+#### Define the restoration grid (This is approximate; I don't have the coords of all the corners). Specifically, I don't have the west and south edges.####
+W_lon = frc_grid_coords$Longitude_DD[which(frc_grid_coords$Quad == 'C4')] - 0.00023
+S_lat = frc_grid_coords$Latitude_DD[which(frc_grid_coords$Quad == 'B2')] - 0.00015 
+N_edge <- aes(
+  x =  frc_grid_coords$Longitude_DD[which(frc_grid_coords$Block == 'A east boundary')], 
+  y =  frc_grid_coords$Latitude_DD[which(frc_grid_coords$Block == 'A north boundary')], 
+  xend = W_lon,
+  yend = frc_grid_coords$Latitude_DD[which(frc_grid_coords$Block == 'A north boundary')]
+)
+E_edge <- aes(
+  x = frc_grid_coords$Longitude_DD[which(frc_grid_coords$Block == 'A east boundary')], 
+  y = frc_grid_coords$Latitude_DD[which(frc_grid_coords$Block == 'A north boundary')], 
+  xend = frc_grid_coords$Longitude_DD[which(frc_grid_coords$Block == 'A east boundary')],
+  yend = S_lat
+)
+W_edge <- aes(
+  x = W_lon,
+  y = frc_grid_coords$Latitude_DD[which(frc_grid_coords$Block == 'A north boundary')],
+  xend = W_lon,
+  yend = S_lat
+)
+S_edge <- aes(
+  x = W_lon,
+  y = S_lat,
+  xend = frc_grid_coords$Longitude_DD[which(frc_grid_coords$Block == 'A east boundary')],
+  yend = S_lat
+)
+
+# corners of outplanting box A1 only
+blockA <- frc_grid_coords %>% 
+  dplyr::filter(Quad == "A3") %>% 
+  dplyr::select(Block, Quad, Longitude_DD, Latitude_DD)
+
+# to add another map on top, i.e., the inset of California showing where FRC is.
+# New plan. Make simple CA map with study area in a square and add that to the outside of the frc map. 
+
+california <- ggplot2::map_data("state", region = "california")
+
+ca_inset <- ggplot() +
+  geom_polygon(data = california, aes(x = long, y = lat, group = group), fill = "grey80", color = 'grey50') + 
+  coord_fixed(1.3) +
+  theme_void() +
+  geom_point(aes(x = Longitude_DD[1], y = Latitude_DD[1]), data = frc_grid_coords[which(frc_grid_coords$Quad == 'A3'),], size = 2.2, shape = 15, color = 'blue4') +
+  annotate('text', x = -121.9, y = 39.1, label = 'Study area', color = 'blue4', size = 2.6) +
+  geom_point(aes(x = -122.4506, y = 37.763)) +
+  annotate('text', x = -120.5, y = 37.763, label = 'San Francisco', size = 1.8) +
+  annotate('text', x = -119, y = 36, label = 'California', size = 2.5, angle = 315)
+```
+
+```{r FRC diver density map 2023 to update date, out.width = '130%', out.height = '130%', out.extra = 'angle = 270', fig.cap = "Two dimensional kernel density map of approximate locations of purple urchin removals at Fort Ross Cove Sep 2023 to update date. Diver days = X. White box is Quad A3, the 30 x 30 m outplanting area. Black box is the 120 x 120 m targeted area.", include = FALSE}
+# References 
+## for creating 2d kernel density plot: https://info5940.infosci.cornell.edu/notes/geoviz/raster-maps-with-ggmap/
+## for adding a map on a map (the CA inset): https://upgo.lab.mcgill.ca/2019/12/13/making-beautiful-maps/
+## North arrow and scale bar features:  https://stackoverflow.com/questions/77437044/add-scalebar-and-north-arrow-in-a-ggmap-without-using-ggsn
+# use NOAA GSHHS shoreline dataset. https://eriqande.github.io/2014/12/17/compare-map-resolutions.html
+# use bboxfinder.com!! http://bboxfinder.com/#38.501027,-123.254414,38.514863,-123.227463
+
+#### Create the FRC map! ####
+# maybe I need to change the lat and lon col names for the density map?
+landings <- landings %>% 
+  dplyr::mutate(lon = start_lon_dec, lat = start_lat_dec)
+
+frc_box = c(-123.252, 38.509, -123.242, 38.5135) # This is the bounding box. c(lowerleftlon, lowerleftlat, upperrigthlon, upperrightlat)
+
+A3_size <- 3
+
+frc_landings <- landings %>% 
+  dplyr::filter(site == 'Fort Ross') 
+
+## it seems important to filter for only data from FRC even though the bounding box is just FRC. It changes the plot when you remove TC points. I wonder if there are misreported points at TC that I haven't groomed yet.
+
+# frc_map <- 
+ggmap(get_stadiamap(bbox = frc_box, zoom = 16)) + #higher zoom increases resolution
+  stat_density2d(data = frc_landings, aes(x = lon, y = lat, fill = stat(level))
+                 , geom = "polygon"
+                 , alpha = 0.7 #makes the heatmap transparent
+                 ) + #makes 2d kernel density lines and fills them according to level
+  scale_fill_continuous(type = 'viridis', breaks = c(1.1e+05, 4.55e+05, 8e+05), labels = c("Fewest", "Average", "Most")) + # Changes the legend text
+ # geom_point(aes(x = lon, y = lat), alpha = .1, data = landings[which(landings$site == 'Fort Ross'),],  size = 2.2) +
+  geom_point(data = blockA, aes(x = Longitude_DD, y = Latitude_DD), shape = 0, size = A3_size, color = 'white') + #add a square point for Quad A3, but the size of the point does not scale to the plot size. Eventually will need to add exact coordinates.
+  annotate('text', x = blockA$Longitude_DD, y = blockA$Latitude_DD, label = "A3", color = 'white', size = 2) +
+  geom_segment(N_edge) + #these 4 segments create lines according to the coords I made above.
+  geom_segment(E_edge) +
+  geom_segment(W_edge) +
+  geom_segment(S_edge) +
+  labs(x = 'Longitude', y = 'Latitude', fill = 'Diver days\n') +
+  ggspatial::annotation_north_arrow(location = "bl", style = ggspatial::north_arrow_minimal()) + #north arrow
+  coord_sf(crs = 4326) + # CRS for northern CA?
+  annotation_scale(location = "bl", width_hint = 0.1) + # scale bar
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1), axis.ticks.x = element_line()) 
+
+## Plot options I didn't use
+  # stat_density2d(aes(fill = after_stat(level)), alpha = .5, geom = "polygon", data = landings) + #not sure about the after_stat function. oh that has to do with what ggplot computes in the new df it creates to make the plot.
+  # scale_color_date(low = 'gold', high = 'red') + # color codes the points by date with earlier dates in gold and later dates in red
+  # scale_shape_manual(values = c(0,2)) + # changes the shapes of the points
+# scale_color_manual(values = colorRampPalette(c("gold", "red"))(15)) + # creates a gradient of discrete colors from yellow to red for the legend. #nah, discrete was too crazy bc it listed out all the dates individually
+
+# ## FRC map with CA inset
+# (frc_map_inset <- ggdraw(frc_map) +
+#   draw_plot(ca_inset, width = .23, height = .4, x = .74, y = .2)) # the inset looks bad in the viewer, but it works in the rendered pdf.
+
+## save the map with specific dimensions
+# tiff(filename = 'frc_map_inset_blackpts.tiff', units = 'in', width = 5.5, height = 4, res = 300)
+# frc_map_inset
+# dev.off()
+```
+
+```{r FRC diver days bubble map 2023 to update date, out.width = '130%', out.height = '130%', out.extra = 'angle = 270', fig.cap = "Approximate locations of urchin removals at FOrt Ross Cove Sep 2023 to update date. Points are scaled to the number of diver days. Total diver days = X. Black box is the 120 x 120 m targeted area"}
+
+# add up total diver days from the same coordinates so there's only one value per unique pair of coordinates
+frc_tot_days <- frc_landings %>% 
+  dplyr::filter(!is.na(days_diving)) %>% 
+  dplyr::group_by(lat, lon) %>% 
+  dplyr::summarise(tot_days = sum(days_diving, na.rm = T))
+
+ggmap(get_stadiamap(bbox = frc_box, zoom = 16)) +
+  geom_point(data = frc_tot_days, aes(x = lon, y = lat, size = tot_days), alpha = 0.4) +
+  labs(x = 'Longitude', y = 'Latitude', size = 'Total\ndiver days') +
+  ggspatial::annotation_north_arrow(location = "bl", style = ggspatial::north_arrow_minimal()) + #north arrow
+  coord_sf(crs = 4326) + # CRS for northern CA?
+  annotation_scale(location = "bl", width_hint = 0.2) + # scale bar
+ map_theme +
+  # geom_point(data = blockA, aes(x = Longitude_DD, y = Latitude_DD), shape = 0, size = A3_size, color = 'white') + #add a square point for Quad A3, but the size of the point does not scale to the plot size. Eventually will need to add exact coordinates.
+  # annotate('text', x = blockA$Longitude_DD, y = blockA$Latitude_DD, label = "A3", color = 'white', size = 2) +
+  geom_segment(N_edge) + 
+  geom_segment(E_edge) +
+  geom_segment(W_edge) +
+  geom_segment(S_edge)
+
+```
+
+```{r TC diver days bubble map, out.width = '130%', out.height = '130%', out.extra = 'angle = 270', fig.cap = "Approximate locations of urchin removals at Timber Cove Sep 2023 to update date. Points are scaled to the number of diver days. Total diver days = 137"}
+
+tc_box = c(-123.280, 38.525, -123.265, 38.534) # lowerleftlon, lowerleftlat, uppergithlon, upperrightlat
+
+# add up total diver days from the same coordinates so there's only one value per unique pair of coordinates
+tc_landings <- landings %>% 
+  dplyr::filter(site == 'Timber')
+
+tc_tot_days <- tc_landings %>% 
+  dplyr::filter(!is.na(days_diving)) %>% 
+  dplyr::group_by(lat, lon) %>% 
+  dplyr::summarise(tot_days = sum(days_diving, na.rm = T))
+
+ggmap(get_stadiamap(bbox = tc_box, zoom = 16)) +
+  geom_point(data = tc_tot_days, aes(x = lon, y = lat, size = tot_days), alpha = 0.4) +
+  labs(x = 'Longitude', y = 'Latitude', size = 'Total\ndiver days') +
+  ggspatial::annotation_north_arrow(location = "bl", style = ggspatial::north_arrow_minimal()) + #north arrow
+  coord_sf(crs = 4326) + # CRS for northern CA?
+  annotation_scale(location = "bl", width_hint = 0.2) + # scale bar
+  map_theme
+
+# # Add coastline overlay
+# sonoma <- map_data("county") %>%
+#   dplyr::filter(subregion == 'sonoma')
+# 
+# TC_coastline <- ggplot(data = sonoma, mapping = aes(x = long, y = lat, group = group)) +
+#   coord_quickmap(xlim = c(-123.5, -123), ylim = c(38.4, 38.6)) +
+#   geom_polygon(fill = 'khaki3') #the resolution is too low.
+# 
+# # use NOAA GSHHS shoreline dataset. https://eriqande.github.io/2014/12/17/compare-map-resolutions.html
+# if (!rgeosStatus()) gpclibPermit() #not sure what this is
+# gshhs <- "C:/Users/Gina.Contolini/Documents/GFA Kelp Restoration/GIS/gshhs_f.b"
+# sf1 <- maptools::getmapdata(gshhs, xlim = c(-125, -120), ylim = c(35, 40)) %>%
+#   fortify()
+  
+# # Add California inset
+# (tc_map_inset <- ggdraw(tc_map) +
+#   draw_plot(ca_inset, width = .23, height = .4, x = .25, y = .2
+#   )) # technically the "study area" point is for FRC, so to be more accurate I could make a new inset map with exact TC coords.
+#   # the inset looks bad in the viewer, but it works in the rendered pdf.
+
+## save the map with specific dimensions
+# tiff(filename = 'tc_map_inset_blkpts.tiff', units = 'in', width = 5.5, height = 4, res = 300)
+# tc_map_inset
+# dev.off()
+```
+
+```{r practice with density plots, include = FALSE}
+# #### Need to figure out what the legend is saying and how to make it say the lbs of urchins removed not whatever "level" is.##### "level" is a new variable computed by ggplot.
+# 
+# # okay it seems impossible to use another variable to set the densities, so instead maybe I can repeat the number of rows for each x y coordinate based on the value of lbs_urchins using pivot_longer. This will result in many thousands of rows which is annoying but I must try something. 
+# # Some helpful sites to learn about the kernal functions: https://stackoverflow.com/questions/32206623/what-does-level-mean-in-ggplotstat-density2d
+# 
+# #### Need to figure out what the legend is saying and how to make it say the lbs of urchins removed not whatever "level" is.##### "level" is a new variable computed by ggplot.
+# 
+# frc_landings_long <- landings %>% 
+#   dplyr::filter(site == 'Fort Ross') %>% 
+#   dplyr::select(lon, lat, lbs_urchins) %>% 
+#   dplyr::filter(!is.na(lon) & !is.na(lat)) %>%  # remove NA coords
+#   dplyr::mutate(lbs_urchins = as.integer(lbs_urchins)) %>% #needs to be integer for the uncount() function later
+#   dplyr::filter(!is.na(lbs_urchins)) %>% # remove na values for lbs_urchins or it doesn't work
+#   tidyr::uncount(weights = lbs_urchins) # repeats all rows according to the number of lbs_urchins
+# 
+# ggmap1 <- ggplot(frc_landings_long, aes(x = lon, y = lat)) +
+#   geom_density_2d() +
+#   geom_point(size = 1)
+# 
+# ## First example from https://stackoverflow.com/questions/30517160/r-how-to-find-points-within-specific-contour 
+# bw <- data.frame(lon = frc_landings_long$lon, lat = frc_landings_long$lat)
+# 
+# dens <- kde2d(bw$lon, bw$lat, n = 200)
+# # make contours to plot
+# prob <- c(.9, .8, .7, .6, .5, .4, .3, .2, .1)
+# dx <- diff(dens$x[1:2])
+# dy <- diff(dens$y[1:2])
+# sz <- sort(dens$z)
+# c1 <- cumsum(sz) * dx * dy
+# levels <- sapply(prob, function(x) {
+#   approx(c1, sz, xout = 1 - x)$y 
+# })
+# 
+# getLevel <- function(x,y,prob){
+#   kk <- MASS::kde2d(x,y)
+#   dx <- diff(kk$x[1:2])
+#   dy <- diff(kk$y[1:2])
+#   sz <- sort(kk$z)
+#   c1 <- cumsum(sz) * dx * dy
+#   approx(c1, sz, xout = 1 - prob)$y
+# }
+# 
+# # 90 and 50% contours
+# L90 <- getLevel(bw$lon, bw$lat, .9)
+# L70 <- getLevel(bw$lon, bw$lat, .7)
+# L50 <- getLevel(bw$lon, bw$lat, .5)
+# L30 <- getLevel(bw$lon, bw$lat, .3)
+# L10 <- getLevel(bw$lon, bw$lat, .1)
+# 
+# kk <- MASS::kde2d(bw$lon, bw$lat)
+# dimnames(kk$z) <- list(kk$x, kk$y)
+# dc <- reshape2::melt(kk$z)
+# 
+# ggplot(dc, aes(x = Var1, y = Var2)) +
+#   # geom_tile(aes(fill = value)) +
+#   geom_contour(aes(z = value), breaks = L90, color = 'purple4') +
+#   geom_contour(aes(z = value), breaks = L70, color = 'orchid') +
+#   geom_contour(aes(z = value), breaks = L50, color = 'skyblue') +
+#   geom_contour(aes(z = value), breaks = L30, color = 'lawngreen') +
+#   geom_contour(aes(z = value), breaks = L10, color = 'yellow') +
+#   # geom_point() +
+#   ggtitle('10, 30, 50, 70, and 90% contours of frc_landings_long')
+# 
+# ## Second example from https://stackoverflow.com/questions/30517160/r-how-to-find-points-within-specific-contour
+# 
+# library(sp)
+# dens <- kde2d(bw$lon, bw$lat, n=200)
+# ls <- contourLines(dens, nlevels = 10)
+# # inner <- point.in.polygon(bw$lon, bw$lat, ls[[2]]$x, ls[[2]]$y)
+# # out <- point.in.polygon(bw$lon, bw$lat, ls[[1]]$x, ls[[1]]$y)
+# 
+# ## Plot
+# # bw$region <- factor(inner + out)
+# plot(lat ~ lon, data = bw)
+# contour(dens, levels = levels, labels = prob, add = T)
+# # based on these contours, I guess I can just calculate the lbs removed? each point represents one pound, so if I just find the proportion of total number of points for each contour, that should tell me the range of lbs removed in each contour. 
+# nrow(bw) # 23884 rows
+# # first contour, up to 10%: up to 2,388 lbs
+# # secon contour, up to 30%: up to 7,165 lbs
+# # third contour, up to 50%: up to 11,942 lbs
+# # fourt contour, up to 70%: up to 16,719 lbs
+# # fifth contour, up to 90%: up to 21,496 lbs
+
+```
+
+```{r FRC lbs removed bubble map 2023 to update date, out.width = '130%', out.height = '130%', out.extra = 'angle = 270', fig.cap = "Approximate locations of purple urchin removals at Fort Ross Cove Sep 2023 to update date. Points are scaled to the number of pounds removed. Diver Days = X"}
+
+# Consolidate lbs with the same coordinates
+frc_lbs_combined <- frc_landings %>%
+  dplyr::filter(!is.na(lbs_urchins)) %>% 
+  dplyr::group_by(lat, lon) %>% 
+  dplyr::summarise(tot_lbs = sum(lbs_urchins, na.rm = T))
+
+# Lbs removed
+ggmap(get_stadiamap(bbox = frc_box, zoom = 16)) +
+  geom_point(data = frc_lbs_combined, aes(x = lon, y = lat, size = tot_lbs), color = 'orchid4', alpha = 0.5) +
+  # geom_density2d(data = frc_landings_long, aes(x = lon, y = lat), bins = 10) + # don't need this. It just creates lines.
+  # stat_density2d(data = frc_landings_long, aes(x = lon, y = lat, fill = after_stat(level)), geom = "polygon", contour = TRUE, bins = 10) +
+  # scale_fill_continuous(type = 'viridis', breaks = seq(2e+5, 1.8e+6, length.out = 5), labels = c("21,496", "19,107",  "11,942", "7,165", "2,388")) + # Changes the legend text
+  geom_segment(N_edge) + # create targeted area box
+  geom_segment(E_edge) +
+  geom_segment(W_edge) +
+  geom_segment(S_edge) +
+  labs(x = 'Longitude', y = 'Latitude', size = 'Total pounds\nremoved') +
+  ggspatial::annotation_north_arrow(location = "bl", style = ggspatial::north_arrow_minimal()) + #north arrow
+  coord_sf(crs = 4326) + # CRS for northern CA?
+  annotation_scale(location = "bl", width_hint = 0.2) + # scale bar
+  map_theme
+ 
+# library(plotly)
+# ggplotly() #allows you to look up info about points by mousing over
+```
+
+```{r TC lbs removed bubble map 2023 to update date, out.width = '130%', out.height = '130%', out.extra = 'angle = 270', fig.cap = "Approximate locations of purple urchin removals at Timber Cove Sep 2023 to update date. Points are scaled to the number of pounds removed. Diver Days = X"}
+tc_landings_combined <- tc_landings %>%
+  dplyr::filter(!is.na(lbs_urchins)) %>% 
+  dplyr::group_by(lat, lon) %>% 
+  dplyr::summarise(tot_lbs = sum(lbs_urchins, na.rm = T))
+
+ggmap(get_stadiamap(bbox = tc_box, zoom = 16)) +
+  geom_point(data = tc_landings_combined, aes(size = tot_lbs), color = 'orchid4', alpha = 0.5) +
+  labs(x = 'Longitude', y = 'Latitude', size = 'Total pounds\nremoved') +
+  ggspatial::annotation_north_arrow(location = "bl", style = ggspatial::north_arrow_minimal()) + #north arrow
+  coord_sf(crs = 4326) + # CRS for northern CA?
+  annotation_scale(location = "bl", width_hint = 0.2) + # scale bar
+ map_theme
+```
+
+```{r FRC lbs removed bubble map 2025 only, out.width = '130%', out.height = '130%', out.extra = 'angle = 270', fig.cap = "Approximate locations of purple urchin removals at Fort Ross Cove May to Jun 2025. Points are scaled to the number of pounds removed. Diver Days = X"}
+
+# Consolidate lbs with the same coordinates
+frc_lbs_combined_2025 <- frc_landings %>% 
+  dplyr::filter(collection_date > ymd('2025-01-01')) %>% 
+  dplyr::filter(!is.na(lbs_urchins)) %>% 
+  dplyr::group_by(lat, lon) %>% 
+  dplyr::summarise(tot_lbs = sum(lbs_urchins, na.rm = T))
+
+# Lbs removed
+ggmap(get_stadiamap(bbox = frc_box, zoom = 16)) +
+  geom_point(data = frc_lbs_combined_2025, aes(x = lon, y = lat, size = tot_lbs), color = 'orchid4', alpha = 0.5) +
+  # geom_density2d(data = frc_landings_long, aes(x = lon, y = lat), bins = 10) + # don't need this. It just creates lines.
+  # stat_density2d(data = frc_landings_long, aes(x = lon, y = lat, fill = after_stat(level)), geom = "polygon", contour = TRUE, bins = 10) +
+  # scale_fill_continuous(type = 'viridis', breaks = seq(2e+5, 1.8e+6, length.out = 5), labels = c("21,496", "19,107",  "11,942", "7,165", "2,388")) + # Changes the legend text
+  geom_segment(N_edge) + # create targeted area box
+  geom_segment(E_edge) +
+  geom_segment(W_edge) +
+  geom_segment(S_edge) +
+  labs(x = 'Longitude', y = 'Latitude', size = 'Total pounds\nremoved') +
+  ggspatial::annotation_north_arrow(location = "bl", style = ggspatial::north_arrow_minimal()) + #north arrow
+  coord_sf(crs = 4326) + # CRS for northern CA?
+  annotation_scale(location = "bl", width_hint = 0.2) + # scale bar
+  map_theme
+
+```
+
+```{r TC lbs removed bubble map 2025 only, out.width = '130%', out.height = '130%', out.extra = 'angle = 270', fig.cap = "Approximate locations of purple urchin removals at Timber Cove May to Jul 1st 2025. Points are scaled to the number of pounds removed. Diver Days = 8"}
+tc_landings_combined_2025 <- tc_landings %>%
+  dplyr::filter(collection_date > ymd('2025-01-01')) %>% 
+  dplyr::filter(!is.na(lbs_urchins)) %>% 
+  dplyr::group_by(lat, lon) %>% 
+  dplyr::summarise(tot_lbs = sum(lbs_urchins, na.rm = T))
+
+ggmap(get_stadiamap(bbox = tc_box, zoom = 16)) +
+  geom_point(data = tc_landings_combined_2025, aes(size = tot_lbs), color = 'orchid4', alpha = 0.5) +
+  labs(x = 'Longitude', y = 'Latitude', size = 'Total pounds\nremoved') +
+  ggspatial::annotation_north_arrow(location = "bl", style = ggspatial::north_arrow_minimal()) + #north arrow
+  coord_sf(crs = 4326) + # CRS for northern CA?
+  annotation_scale(location = "bl", width_hint = 0.2) + # scale bar
+ map_theme
+
+```

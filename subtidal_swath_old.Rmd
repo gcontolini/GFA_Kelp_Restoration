@@ -1,0 +1,1386 @@
+---
+title: "Subtidal swath and targeted surveys"
+subtitle: "By Gina Contolini. Greater Farallones Association, NOAA Affiliate"
+author: "Greater Farallones and Cordell Bank National Marine Sanctuaries"
+date: "Updated on `r Sys.Date()`"
+header-includes:
+- \usepackage{pdflscape}
+- \usepackage{placeins}
+- \newcommand{\blandscape}{\begin{landscape}}
+- \newcommand{\elandscape}{\end{landscape}}
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(flextable)
+library(scales) # to get commas in the axis labels
+library(car)
+library(vegan) # for rarefaction and multivariate analysis
+
+urchin_purple_light = 'orchid2'
+urchin_purple_dark = 'mediumpurple1'
+
+# set ggplot theme
+my_theme <- theme( 
+   panel.background = element_rect(fill = 'transparent', color = NA_character_), # transparent panel background
+   plot.background = element_rect(fill = 'transparent', color = NA_character_), #transparent plot bkgd
+   panel.grid = element_line(color = 'transparent'), # remove all grid lines
+   panel.border = element_blank(),
+   axis.text = element_text(size = 15,color = 'black'), # makes axis labels bigger
+   axis.title = element_text(size = 20), #makes axis title bigger and bold
+   axis.ticks.x = element_blank(),
+   # axis.title.y = element_text(margin=margin(0,10,0,5)), # pushes the y axis title away from the y axis labels
+   # axis.text.x = element_text(margin=margin(0,0,20,0)), #pushes the x axis title away from the x axis labels and pushes the bars down closer to the x axis labels
+   legend.title = element_text(size = 20),
+   legend.text = element_text(size = 18),
+   legend.background = element_rect(fill = 'transparent', color = NA_character_),
+   axis.line = element_line(color = 'black'),
+   plot.title = element_text(size = 20),
+   legend.key = element_rect(fill = 'transparent'),
+   strip.text.x = element_text(size = 20)
+   # panel.grid.minor.x = element_blank(), # remove minor x axis grid line
+   # panel.grid.major.x = element_blank(), # remove major x axis grid line
+)
+
+transparent_theme <-  my_theme + theme(
+    panel.background = element_rect(fill='transparent', color = NA_character_), #transparent panel bg
+    plot.background = element_rect(fill='transparent', color = NA_character_), #transparent plot bg
+    panel.grid.major = element_blank(), #remove major gridlines
+    panel.grid.minor = element_blank(), #remove minor gridlines
+    legend.background = element_rect(fill='transparent', color = NA_character_), #transparent legend bg
+    legend.box.background = element_rect(fill='transparent', color = NA_character_) #transparent legend panel
+  ) # to print a transparent bg plot, use this theme and ggsave("plot.png", plot, bg = "transparent")
+
+# To prevent headers from floating around the knitted pdf:
+knitr::knit_hooks$set(plot = function(x, options) {
+  paste0(knitr::hook_plot_tex(x, options), "\n\\FloatBarrier\n")
+})
+```
+
+```{r load and format data, include = FALSE}
+swath <- read_csv('GFNMS Swath and KELPUR data entry (all years) - load_to_R.csv') %>% # loaded 2025-05-15
+  dplyr::mutate(site = replace(site, site == 'timber', 'Timber')) %>% 
+  dplyr::mutate(site = replace(site, site == 'fort_ross', 'Fort Ross')) %>%   
+  dplyr::mutate(site = replace(site, site == 'shell_beach', 'Shell Beach')) %>% 
+  dplyr::mutate(site = replace(site, site == 'ocean', 'Ocean')) %>% 
+  dplyr::mutate(site = replace(site, site == 'gerstle', 'Gerstle')) %>% 
+  dplyr::mutate(heading = as.character(heading)) # for joins later
+
+# upload targeted monitoring (URCHIN) data, currently only available in 2023
+target <- read_csv('URCHIN_survey_data - URCHIN_tot_counts+sizes.csv') %>% # loaded 2025-05-15
+  dplyr::mutate(survey_type = 'URCHIN') %>% 
+  dplyr::mutate(site = replace(site, site == 'timber', 'Timber')) %>% 
+  dplyr::mutate(site = replace(site, site == 'fort_ross', 'Fort Ross')) %>%   
+  dplyr::mutate(site = replace(site, site == 'ocean', 'Ocean'))
+
+swath_target <- full_join(swath, target) %>% 
+  dplyr::mutate(year = as.factor(year)) %>% #otherwise year is printed with a comma for the thousands
+  dplyr::mutate(year = factor(year, levels = c(2022, 2023, 2024, 2025)))
+```
+
+```{r explore data and check for errors, include = FALSE}
+# check for completeness
+# total number of surveys done.
+# how many unique combinations of certain column values
+(n_surveys <- n_distinct(swath_target$year, 
+           swath_target$month, 
+           swath_target$day, 
+           swath_target$site, 
+           swath_target$subsite, 
+           swath_target$observer, 
+           swath_target$buddy,
+           swath_target$region, 
+           swath_target$zone, 
+           swath_target$block, 
+           swath_target$quad, 
+           swath_target$transect, 
+           swath_target$transect_m, 
+           swath_target$transect_no, 
+           swath_target$heading, 
+           swath_target$survey_type)) # 177 surveys without the missing algae swaths, or 183 with.
+
+swath_target_survey_counts <- swath_target %>% 
+  dplyr::count(year, month, day, site, subsite, observer, region, zone, block, quad, transect, transect_m, transect_no, heading, survey_type) %>%  # n shows how many rows we entered for each individual transect. This is only useful because now all the rows with the same metadata are represented by one row. I don't actually care about how many rows were entered.
+  dplyr::count(year, month, day, site, survey_type) %>%
+  # dplyr::filter(survey_type == 'kelpUr')
+  dplyr::arrange(year, month, day, site)
+
+# View(swath_target_survey_counts)
+# algae swaths missing:
+## 3 on 14 Sep 2022 (Fort Ross)
+### 2 main MID and 1 north MID 
+## 3 on 15 Sep 2022 (Timber)
+### 2 main SHALLOW and 1 north MID
+# I could not find them in the photos of datasheets. I made notes about them on the data entry spreadsheet.
+# I added these back on 2025-05-15 after asking the team if it made sense to do so. 
+
+# summarize by year, month, site, survey type 
+tot_survey_site_month <- swath_target_survey_counts %>% 
+  # dplyr::filter(site == 'Fort Ross') %>%
+  dplyr::group_by(year, month, site, survey_type) %>%
+  dplyr::summarise(tot_surveys = sum(n)) %>% 
+  dplyr::arrange(.by_group = TRUE, .locale = "en") # sort first by grouping variable. applies to grouped data frames only. However, it appears that arrange() does not sort characters. I thought the locale would fix it but alas no.
+
+sum(tot_survey_site_month$tot_surveys) # Another way to count survey numbers. 177 total w/o missing algae swaths, or 183 with. 
+
+# I think I need to make survey/transect ID columns to be able to sort surveys/transects easily on one criterion instead of like 10, some of which have NA values.
+swath_target$survey_ID <- swath_target %>% 
+  dplyr::group_by(year, month, day, site, subsite, observer, region, zone, block, quad, transect, transect_m, transect_no, heading, survey_type) %>%  
+  group_indices() # CREATES A NEW VARIABLE WITH AN DISTINCT GROUP NAME FOR EVERYTHING IN THAT GROUP!
+
+## I had to manually identify transect_ID because there were too many inconsistencies with the metadata. So each separate transect is already manually identified by a unique number. This means the entire community can be identified and community analyses can proceed.
+```
+As of 2025-02-19, we have conducted `r n_surveys` subtidal swath surveys, including targeted monitoring, PISCO invertebrate, PISCO algae, PISCO kelp-urchin, and PISCO abalone-urchin surveys. This number does not include UPC surveys.
+
+```{r check urchin sizes kelpur vs. urchin surveys, include = FALSE}
+#### KELPUR surveys first ####
+kelpurs_pur <- swath_target %>% 
+  dplyr::filter(survey_type == 'KELPUR' & classcode == 'STRPUR') %>% 
+  dplyr::select(site, subsite, `1_cm_count`:`31_cm_count`)
+
+# Check distribution of urchin sizes. Histogram? Rarefaction is number of species by sample size. We could try number of sizes by sample size, but there aren't that many sizes, so I don't think that would be useful. I think we want to compare distributions. A Kolmogorov-Smirnov test tests for differences in distribution. Maybe we can pool all KELPUR sizes and all target sizes so sample size is larger and compare totals.
+
+# Histograms first.
+## A histogram needs a list of sizes in one column and then it puts them in a histogram. 3, 4, 3, 3, 2, 5, 5, 6, 12, 13, 14, 2, 3, 4, 5, etc. So the contents of all the sizing columns. 
+# histogram doesn't really work because the data aren't continuous since we binned the sizes.
+
+kelpurs_pur_tot_counts <- pivot_longer(kelpurs_pur, cols = `1_cm_count`:`31_cm_count`, names_to = 'size', values_to = 'count') %>% 
+  dplyr::filter(!count == 0) %>% # remove zeros bc I don't want those in the graph
+  dplyr::mutate(size = gsub('_cm_count', '', size)) %>% # remove "_cm_count" from the values in size
+  dplyr::mutate(size = as.numeric(size)) %>% # make sizes numbers
+  dplyr::group_by(size) %>% 
+  dplyr::summarise(count_sum = sum(count))
+
+ggplot(kelpurs_pur_tot_counts, aes(x = size, y = count_sum)) +
+  geom_col() + 
+  scale_x_continuous(breaks = 1:8) +
+  ggtitle('KELPUR survey purple urchin sizes') +
+  labs(x = 'Size (cm)', y = 'Count') +
+  my_theme
+
+#### URCHIN surveys next ####
+targets_pur <- swath_target %>% 
+  dplyr::filter(survey_type == 'URCHIN' & classcode == 'STRPUR') %>% 
+  dplyr::select(site, subsite, `1_cm_count`:`15_cm_count`)
+
+targets_pur_tot_counts <- pivot_longer(targets_pur, cols = `1_cm_count`:`15_cm_count`, names_to = 'size', values_to = 'count') %>% 
+  dplyr::filter(!count == 0) %>% # remove zeros bc I don't want those in the graph
+  dplyr::mutate(size = gsub('_cm_count', '', size)) %>% # remove "_cm_count" from the values in size
+  dplyr::mutate(size = as.numeric(size)) %>% # make sizes numbers
+  dplyr::group_by(size) %>% 
+  dplyr::summarise(count_sum = sum(count))
+
+ggplot(targets_pur_tot_counts, aes(x = size, y = count_sum)) +
+  geom_col() + 
+  scale_x_continuous(breaks = 1:8) +
+  ggtitle('URCHIN survey purple urchin sizes') +
+  labs(x = 'Size (cm)', y = 'Count') +
+  my_theme
+
+#### Compare distributions and central tendencies ####
+# Use nonparmetric test to test for differences in size distribution since our data are not continuous and there are loads of ties so we can't use a K-S test (we binned urchin sizes in the field.)
+qqnorm(kelpurs_pur_long$size); qqline(kelpurs_pur_long$size)
+qqnorm(targets_pur_long$size); qqline(targets_pur_long$size)
+shapiro.test(kelpurs_pur_long$size) # not normal
+shapiro.test(targets_pur_long$size) # not normal
+
+# need equal sample sizes.
+k_sample <- sample(kelpurs_pur_long$size, nrow(targets_pur_long))
+qqnorm(k_sample); qqline(k_sample)
+
+wilcox_size_samples <- bind_rows(
+  targets_pur_long %>% 
+    dplyr::mutate(survey = 'target'),
+  tibble(survey = 'KELPUR', size = k_sample)
+)
+
+# try rank sum test, Mann_whitney U test. R calls it the wilcox test.
+wilcox.test(size ~ survey, data = wilcox_size_samples) # P was consistently lower than 0.05 for different random samples of the KELPUR data. So I think I can conclude there are differences in the center of the data. It looks like URCHIN surveys find a larger portion of the larger urchins. 
+```
+
+```{r rarefaction analysis, include = FALSE}
+# A rarefaction curve indicates the minimum number of samples needed to see the full diversity of species (or in this case, sizes). 
+# ok maybe I can use rarefaction to see how many surveys are needed to get size seven urchins and compare between KELPUR and target.
+# need to do this for each transect so it's a literal check on the order in which we find the urchins. Well we don't have that because all the sizes are grouped now. but we do have different surveys, so i could check how many size classes vs. number of surveys.
+# x axis: number of surveys
+# y axis: number of different size classes recorded. (like number of species)
+# For each transect, how many size classes were recorded?
+# The rarefaction curve is an accumulation. So start with one survey and see how many dif size classes it found, then check next survey and see if it found more, etc.
+# Will need to group by transect (see code above where I counted how many transects we did)
+# Will need to count different variables. Unique would work if the variables are pivoted to cell values along with count, and 0 counts are removed so only variables with greater than zero recorded remain. Then could use unique() to find unique values within groups. 
+# I want to know on average how many different size classes are found in one survey, two surveys, three surveys, etc. up to the total number of surveys done. 
+
+swath_target_pur_long <- swath_target %>% 
+  dplyr::filter(classcode == 'STRPUR') %>% # purples only
+  pivot_longer(cols = `1_cm_count`:`31_cm_count`, names_to = 'size', values_to = 'size_count') %>% 
+  dplyr::filter(!size_count == 0) %>% # remove sizes with no counts bc we are tallying up the different size classes
+  dplyr::group_by(year, month, day, site, subsite, observer, region, zone, block, quad, transect, transect_m, transect_no, heading, survey_type, segment) %>% # determine how many unique size classes there are per SEGMENT because there are different sizes measured in each segment. Segments are unique by year, month, day, site, subsite, observer, region, zone, block, quad, transect, transect_m, transect_no, heading, survey_type, segment
+  dplyr::summarise(unique_class = length(unique(size)))
+  
+#### We only sized urchins on 5 URCHIN surveys! so this analysis isn't really possible bc that's not a large enough sample size. ####
+
+# now I need a new tibble with average number of size classes for one segment, two segments, three segments, up to the total
+
+#### Swath surveys rarefaction ####
+
+swath_pur_long <- swath_target_pur_long %>% 
+  filter(survey_type %in% c('KELPUR', 'AbU')) %>% 
+  dplyr::ungroup() %>% 
+  dplyr::select(survey_type, unique_class)
+
+rarefaction_swath <- tibble(no_segments = 1:nrow(swath_pur_long), avg_size_classes = NA, max_size_class = NA)
+
+for(i in 1:nrow(swath_pur_long)){
+  rarefaction_swath$no_segments[i] = i
+  
+  rarefaction_swath$avg_size_classes[i] =   mean(sample(swath_pur_long$unique_class, i))
+  
+  rarefaction_swath$max_size_class[i] = max(sample(swath_pur_long$unique_class, i))
+}
+
+ggplot(rarefaction_swath, aes(x = no_segments, y = avg_size_classes)) +
+  geom_point() +
+  ggtitle('Avg number of size classes found vs number of swath segments')
+
+ggplot(rarefaction_swath, aes(x = no_segments, y = max_size_class)) +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks = seq(0,nrow(rarefaction_swath), 10)) +
+  ggtitle('Rarefaction for swath segments')
+
+#### URCHIN surveys rarefaction ####
+
+target_pur_long <- swath_target_pur_long %>% 
+  filter(survey_type == 'URCHIN')
+
+rarefaction_target <- tibble(no_surveys = 1:nrow(target_pur_long), avg_size_classes = NA, max_size_class = NA)
+
+for(i in 1:nrow(target_pur_long)){
+  rarefaction_target$no_surveys[i] = i
+  
+  rarefaction_target$avg_size_classes[i] =   mean(sample(target_pur_long$unique_class, i))
+  
+  rarefaction_target$max_size_class[i] = max(sample(target_pur_long$unique_class, i))
+}
+
+ggplot(target_pur_long, aes(x = 1:5, y = unique_class)) +
+  geom_point() +
+  scale_y_continuous(breaks = 1:7, limits = c(1,7)) +
+  labs(x = 'Survey number', y = 'Number of unique size classes') +
+  ggtitle('Number of different size classes found in each URCHIN survey')
+
+ggplot(rarefaction_target, aes(x = no_surveys, y = avg_size_classes)) +
+  geom_point() +
+  labs(x = 'Number of surveys', y = 'Avg no. unique size classes') +
+  ggtitle('Avg number of size classes found vs number of URCHIN surveys')
+
+ggplot(rarefaction_target, aes(x = no_surveys, y = max_size_class)) +
+  geom_point() +
+  labs(x = 'Number of surveys', y = 'Max no. different size classes') +
+  scale_y_continuous(limits = c(5, 8)) +
+  ggtitle('Rarefaction for URCHIN surveys')
+```
+
+# Rarefaction analysis for purple urchin sizes
+```{r rarefaction plot for KELPUR surveys, warning = FALSE, message = FALSE}
+#### vegan version of rarefaction ####
+## data(BCI) #kelpurs_pur[,3:length(kelpurs_pur)] # length = 28
+## S <- specnumber(BCI) # observed number of species #
+# K <- specnumber(kelpurs_pur[,3:29])
+## (raremax <- min(rowSums(BCI))) # 7? 
+## Srare <- rarefy(BCI, raremax) # 
+# Krare <- rarefy(kelpurs_pur[,3:29], 6)
+# plot(K, Krare, xlab = "No. of Segments", ylab = "Rarefied No. of Size Classes") # plot(S, Srare) # BROKEN NEED to fix #***
+# abline(0, 1)
+## rarecurve(BCI, step = 20, sample = raremax, col = "blue", cex = 0.6)
+rarecurve(kelpurs_pur[,3:29], step = 1, sample = 0, col = 'purple4', xlab = 'No. of segments', ylab = 'No. size classes')
+
+### CONCLUSION ###
+# Nine KELPUR segments is enough to get the vast majority of all the urchin sizes we see. That's 3 transects. 
+```
+Nine KELPUR segments (three transects) is enough to get the majority of all the urchin sizes out there. If less than that, we're most likely not recording the full range of size classes because the sample size is too small. 
+
+```{r deal with incomplete surveys}
+# calculate density in each 30 m transect for all species in PISCO surveys
+## This is a bit tricky because there are a few transects missing a segment, which means their total area is different.
+
+## First I'm just going to try to identify which surveys have missing segments and also how much of them was actually sampled.
+N_missing_segments <- swath_target %>% 
+       dplyr::filter(!segment == 'ALL' & !is.na(count)) %>% # remove ALLs because those aren't the problem.
+    dplyr::count(year, month, day, site, subsite, zone, region, block, quad, transect_m, transect_no, transect, heading, observer, survey_type, survey_ID, segment) %>% # counts the number of rows per survey and segment. The benefit is now the segments are consolidated per survey. Each row is a different survey.
+    dplyr::count(year, month, day, site, subsite, zone, region, block, quad, transect_m, transect_no, transect, survey_type, heading, observer, survey_ID) %>% # counts number of segments per survey
+    dplyr::filter(n < 3) # identifies surveys that have under 3 segments, which means the transect was not completed and density needs to be calculated in an area different than 60m2. As of March 2025, there are four.
+
+#### Check for incomplete purple urchin counts since those should always have three segments ####
+N_purple_urchin_segments <- swath_target %>% 
+  dplyr::filter(!segment == 'ALL' & !is.na(count)) %>% # remove ALLs and NAs
+  dplyr::filter(classcode == 'STRPUR') %>% # purple urchins only
+  dplyr::count(year, month, day, site, subsite, zone, region, block, quad, transect_m, transect_no, transect, survey_type, heading, observer, survey_ID) %>% # number of rows per survey and segment. 
+  dplyr::filter(n < 3) # identifies transects that have under 3 segments. As of March 2025, there are three.
+  
+#### Check for incomplete red urchin counts since those should always have three segments ####
+N_red_urchin_segments <- swath_target %>% 
+  dplyr::filter(!segment == 'ALL' & !is.na(count)) %>% # remove ALLs and NAs
+  dplyr::filter(classcode == 'MESFRA') %>% # purple urchins only
+  dplyr::count(year, month, day, site, subsite, zone, region, block, quad, transect_m, transect_no, transect, survey_type, heading, observer, survey_ID) %>% # number of rows per survey and segment. 
+  dplyr::filter(n < 3) # identifies transects that have under 3 segments. As of March 2025, there are two.
+
+## Join all incomplete transects ##****
+incomplete_surveys <- full_join(N_missing_segments,
+  N_purple_urchin_segments) %>% full_join(N_red_urchin_segments)
+# As of March 2025, this tibble has five rows.
+
+# isolate and remove the last one because I know it is just for purple urchins.
+incomplete_purple_urchin_surveys = incomplete_surveys[5,] # this is Steve's transect
+incomplete_surveys = incomplete_surveys[-5,] # remove Steve's row
+```
+
+```{r calculate density}
+swath_target_den <- swath_target %>% 
+   dplyr::mutate(den_per_m = (count / (meters_sampled))) %>% # calculate density in the meters that were actually sampled.
+   dplyr::mutate(extrap_count_segment = 
+                   if_else(segment %in% c("0-10m", "10-20m", "20-30m"), den_per_m * 10, den_per_m * 30)) %>% # multiply density by the length of the segment to extrapolate counts where needed so we can add them up later. Needs if_else because not all segments have the same length. 
+   # combine species counts from all available segments per survey:
+   dplyr::group_by(year, month, day, site, subsite, zone, region, block, quad, transect_m, transect_no, transect, heading, observer, survey_type, survey_ID, transect_ID, classcode) %>% # group by species in each survey, so all segments are together
+   dplyr::summarise(count_sum = sum(extrap_count_segment, na.rm = T), N = n()) %>%  # add up counts in all segments per survey
+   dplyr::mutate(den_m2 = count_sum / 60) # calculate density for the entire 30 x 2 m survey. Most are 60m2, but some are incomplete and have smaller area, as listed in the dataframe "incomplete_surveys".
+
+# Now make the corrections for the surveys that didn't go the full distance.  The following loop changes the area over which density is calculated based on how many segments were done for each incomplete transect. Each segment area is 20 m2. 
+
+swath_target_den$den_m2_corrected = swath_target_den$den_m2 # set up a new variable that I will now work on below
+
+for(i in 1:nrow(incomplete_surveys)) { # for every incomplete transect. in March 2025 there are four.
+swath_target_den$den_m2_corrected[which(
+  swath_target_den$survey_ID == incomplete_surveys$survey_ID[i])] = # all the densities for this incomplete survey equal
+  swath_target_den$count_sum[which(
+  swath_target_den$survey_ID == incomplete_surveys$survey_ID[i])] / (incomplete_surveys$n[i] * 20) # the extrapolated counts divided by the area surveyed (number of segments times 20)
+}
+  
+# ok now the only problem is Steve's incomplete transect was only for STRPUR. All other classcodes for that transect should be out of 60 m2.
+
+swath_target_den$den_m2_corrected[which(
+  swath_target_den$survey_ID == 38 & swath_target_den$classcode == 'STRPUR')] = 
+  swath_target_den$count_sum[which(
+  swath_target_den$survey_ID == 38 & swath_target_den$classcode == 'STRPUR')] / 40
+
+# Now the den_m2_corrected column is the correct density based on how much distance was actually surveyed. 
+
+# save this as a .csv, which is what is uploaded onto the GFCBNMS server.
+# write_csv(swath_target_den,'GFNMS_swath_target_surveys_2022-2025.csv') # this will overwrite the existing one, so make sure you're confident there are no errors before you execute this code.
+
+```
+
+```{r tables}
+tot_survey_site_month %>% 
+  flextable() %>% 
+  flextable::set_caption("Number of survey types completed by month and site") # I can't figure out how to alphabetize the survey_types. Seems pretty basic but is very broken. 
+
+```
+
+```{r complete the zeros}
+# All transects should have all species represented, and if nothing was originally recorded for a particular species, it will now have a zero in "den_m2_corrected" column.
+
+# If columns are classcodes and rows are transects, then every transect has to have all the classcodes and I can fill the NAs with zeros.
+
+# make it a dataframe to remove grouping variables
+swath_target_den2 <- as.data.frame(swath_target_den)
+
+swath_matrix_counts <- swath_target_den2 %>% 
+  select(transect_ID, classcode, den_m2_corrected) %>% # the only metadata needed is transect_ID
+  # I want each col to be a species, rows to be IDs, and values to be densities.
+  pivot_wider(names_from = 'classcode', values_from = 'den_m2_corrected')
+
+# Change all NA values in the densities to 0. 
+swath_matrix_counts0 <- swath_matrix_counts %>% replace(is.na(.), 0) 
+
+# Okay now if I pivot longer, I think it will keep all the classcodes for each transect, and then I can join it to the densities I calculated above.
+swath_target_den0_prejoin <- swath_matrix_counts0 %>%
+  pivot_longer(2:length(swath_matrix_counts0), names_to = 'classcode', values_to = 'den_m2_corrected')
+
+# join it to relevant metadata from the full dataset. Not using all of the metadata because survey type should be consolidated and things like heading and observer were not consistent within transects and I want it to join using transect_ID and classcode (right?). 
+swath_target_den0 <- as.data.frame(swath_target_den) %>% 
+  select(year, month, day, site, subsite, zone, region, block, quad, transect_m, transect_no, transect, heading, observer, survey_type, survey_ID, transect_ID) %>% 
+  # filter for unique instances of transect_ID
+  distinct(transect_ID, .keep_all = TRUE) %>% #just takes rows with distinct values of transect_ID.
+  inner_join(swath_target_den0_prejoin) 
+
+# test_join <- full_join(swath_target_den,swath_target_den0_prejoin)
+
+```
+
+```{r fig.cap = "Distribution of purple urchin densities per site over time. Labels on boxes indicate medians. The upper and lower hinges correspond to the first and third quartiles. Whiskers extend to 1.5 * the interquartile range. Data outside the whiskers (outliers) are shown as points. Survey type differed between years, where URCHIN surveys were performed only in 2023. N = 7, 11, 29, 11, 8, 13, 6"}
+
+swath_target_den_purp <- swath_target_den0 %>% 
+  dplyr::filter(site %in% c('Fort Ross', 'Timber') & classcode == 'STRPUR') %>%
+  dplyr::filter(!subsite %in% c('kelp bed by beach')) # not the shallow kelp bed
+
+medianpsu <- swath_target_den_purp %>% 
+  dplyr::group_by(year, site) %>% 
+  dplyr::summarise(median_den = median(den_m2_corrected), N = n(), min_den = min(den_m2_corrected), max_den = max(den_m2_corrected)) %>% 
+  dplyr::mutate(y_pos = median_den + 4) %>% 
+  dplyr::mutate(median_den = format(round(median_den, 2), nsmall = 2))
+
+# Plot distribution of urchin density by site and year
+rect <- data.frame(xmin = c(0, 0), xmax = c(5, 0), 
+                 ymin = c(-Inf, 0), ymax = c(Inf, 0))  
+  
+ggplot(swath_target_den_purp, aes(x = year, y = den_m2_corrected))  +
+  geom_rect(aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+            alpha = 0.6, fill = urchin_purple_dark,
+            data = transform(rect, site = c('Fort Ross', 'Timber')),
+            inherit.aes = FALSE) + # need this to get the rect to go only in one facet
+  geom_boxplot() +
+  scale_y_continuous(expand = c(0,0), limits = c(0, 110), breaks = seq(0,120,20)) +
+  facet_wrap(~site) +
+  geom_text(data = medianpsu, aes(label = median_den), y = medianpsu$y_pos, parse = TRUE) +
+  geom_text(data = medianpsu, aes(label = paste('N==', N, sep = '')), y = 99, parse = TRUE) +
+  # geom_hline(yintercept = 2, color = 'red', linetype = 2) +
+  labs(y = bquote(paste('Density (no. ', ~m^-2, ')')), x = 'Year') +
+  theme(strip.background = element_blank(), legend.position = 'none', axis.title.y = 
+          element_text(
+            margin = margin(0, 1, 0, 5), angle = 90) # pushes the y axis title away from the y axis labels
+        ) + my_theme
+```
+
+```{r fig.cap = "Mean bull kelp density per site over time. Horizontal line indicates median. Survey type differed between years. Error bars are SD. N surveys = 7, 11, 29, 11, 8, 13, 6"}
+
+# swath bull kelps
+swath_target_den_kelp <- swath_target_den0 %>% 
+  dplyr::filter(classcode %in% c('NERLUE', 'NERLUEJUV', 'NERLUEREC', 'NERLUEAD', 'NERLUEBROKEN')) %>% #just Nereos 
+  dplyr::filter(site %in% c('Fort Ross', 'Timber')) %>% # Only FRC and TC
+  dplyr::filter(!subsite %in% c('kelp bed by beach')) # not that shallow kelp bed area.
+
+swath_target_den_kelp_notzero <- swath_target_den_kelp %>% 
+  filter(den_m2_corrected > 0)
+
+# Count how many unique transects were done
+transect_n_k <- swath_target_den0 %>% 
+  filter(classcode == 'NERLUE' & site %in% c('Fort Ross', 'Timber')) %>%
+  filter(!subsite %in% c('kelp bed by beach')) %>%
+  count(site, year)
+
+mediank <- swath_target_den_kelp %>% 
+  dplyr::group_by(year, site) %>% 
+  dplyr::summarise(median_den = median(den_m2_corrected), N1 = n(), min_den = min(den_m2_corrected), max_den =  max(den_m2_corrected), mean_den = mean(den_m2_corrected), sd = sd(den_m2_corrected)) %>% 
+  # dplyr::mutate(y_pos = c(0.2, 0.2, 0.2, 0.2, 1, 1, 1)) %>% 
+  dplyr::mutate(mean_den = format(round(mean_den, 2), nsmall = 2)) %>% 
+  dplyr::mutate(mean_den = as.numeric(mean_den))
+
+ggplot(mediank, aes(x = year, y = mean_den)) +
+  geom_rect(aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+            alpha = 0.3, fill = 'green', 
+            data = transform(rect, site = c('Fort Ross', 'Timber')),
+            inherit.aes = FALSE) + # need this to get the rect to go only in one facet
+  # geom_boxplot() +
+  facet_wrap(~site) +
+  # geom_dotplot(data = swath_target_den_kelp_notzero, aes(x = year, y = den_m2_corrected), binaxis = "y", stackdir = "center", dotsize = 0.75, fill = 'gray20', color = NA) + #hm would be nice to show just points above 0.
+  geom_point(size = 2) +
+  geom_errorbar(aes(ymin = mean_den - sd, ymax = mean_den + sd, width = 0)) +
+  # scale_y_continuous(limits = c(0, max(swath_target_den_kelp$den_m2_corrected) + 0.5), breaks = seq(0, 3, 0.5)) +
+  geom_text(data = mediank, aes(label = mean_den), y = 0.16, parse = TRUE) +
+  geom_text(data = transect_n_k, aes(label = paste('N==', n, sep = '')), y = .5, parse = TRUE) +
+  geom_hline(yintercept = 0) +
+  labs(y = bquote(paste('Density (no. ', ~m^-2, ')')), x = 'Year') +
+  transparent_theme +
+  theme(strip.background = element_blank(), legend.position = 'none', axis.line.x.bottom = element_blank())
+# ggsave("fig4poster.png", fig4poster, bg = "transparent")
+
+```
+
+```{r fig.cap = "Frequency of purple urchin diameters from subtidal surveys. Data combined from AbU, KELPUR, and URCHIN surveys"}
+# Purple urchin sizes at each site by year?
+size_sums_purp <- swath_target %>% 
+  dplyr::filter(site %in% c('Fort Ross', 'Timber')) %>% #Only FRC and TC
+  dplyr::filter(classcode %in% c('STRPUR')) %>% # only STRPUR
+  dplyr::filter(!is.na(`1_cm_count`)) %>% # only use rows without NAs
+  dplyr::group_by(year, site, classcode) %>% 
+  dplyr::summarise(  '1' = sum(`1_cm_count`)
+                   , '2' = sum(`2_cm_count`)
+                   , '3' = sum(`3_cm_count`)
+                   , '4' = sum(`4_cm_count`)
+                   , '5' = sum(`5_cm_count`)
+                   , '6' = sum(`6_cm_count`)
+                   , '7' = sum(`7_cm_count`)
+                   , '8' = sum(`8_cm_count`)
+                   , '9' = sum(`9_cm_count`)
+                   , '10' = sum(`10_cm_count`)
+                   ) %>% 
+  pivot_longer(cols = `1`:`10`, names_to = 'size_cm', values_to = 'count') %>% 
+  dplyr::mutate(size_cm = as.numeric(size_cm)) %>% 
+  uncount(count)
+
+rect2 <- data.frame(
+  xmin = c(rep(-Inf, 3), rep(0, 2)), 
+  xmax = c(rep(Inf, 3), rep(0, 2)),
+  ymin = c(rep(-Inf, 3), rep(0, 2)),
+  ymax = c(rep(Inf, 3), rep(0, 2)), 
+  year = c(2022, 2023, 2024, 2022, 2024),
+  site = c(rep('Fort Ross', 3), rep('Timber', 2))
+  # lab  = c(NA, NA, NA, 'ND', NA)
+)
+
+# Purple urchin diameters FRC and TC
+ggplot(size_sums_purp, aes(x = size_cm)) +
+  geom_histogram(binwidth = 1, fill = 'mediumpurple1', color = 'black') +
+  facet_wrap(site~year) +
+  # scale_x_continuous(breaks = seq(1,10,1)) +
+  scale_y_continuous(expand = c(0,0)) +
+  ggtitle('Swath purple urchin diameters. N = 3,095')
+
+# summary table of sizes
+size_sums_purp %>% 
+  dplyr::group_by(site) %>% 
+  dplyr::summarise(mean_diam = mean(size_cm, na.rm = T), sd_diam = sd(size_cm, na.rm = T), median_diam = median(size_cm, na.rm = T), n = n()) %>% 
+  flextable() %>% 
+  flextable::set_caption("Summary of subtidal purple urchin diameters from subtidal surveys (cm)") 
+
+# ggplot(size_sums_purp, aes(x = size_cm, y = count)) +
+#    geom_rect(aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), alpha = .3, fill = 'purple', data = transform(rect2), inherit.aes = FALSE) + # need this to get the rect to go only in one facet
+#   geom_col() +
+#   facet_wrap(c('site', 'year')) +
+#   # facet_grid('year') +
+#   scale_y_continuous(expand = c(0,0)) +
+#   scale_x_continuous(breaks = seq(1,9,1)) + 
+#   labs(x = 'Urchin diameter (cm)', y = 'Count') +
+#   # geom_text(x = 5, y = 100, label = 'ND') +
+#   theme(strip.background = element_blank(), legend.position = 'none', strip.text.x = element_text(size = 12), plot.title = element_text(size = 15), axis.title = element_text(size = 13), axis.text = element_text(size = 12))
+
+```
+
+```{r fig.cap = "Frequency of red urchin diameters from subtidal surveys over time. Data combined from AbU, KELPUR, and URCHIN surveys"}
+size_sums_red <- swath_target %>% 
+  dplyr::filter(site %in% c('Fort Ross', 'Timber')) %>% #Only FRC and TC
+  dplyr::filter(classcode %in% c('MESFRA')) %>% # only MESFRA
+  dplyr::filter(!is.na(`1_cm_count`)) %>% # only use rows without NAs
+  dplyr::group_by(year, site, classcode) %>% 
+  dplyr::summarise('1' = sum(`1_cm_count`)
+                   , '2' = sum(`2_cm_count`)
+                   , '3' = sum(`3_cm_count`)
+                   , '4' = sum(`4_cm_count`)
+                   , '5' = sum(`5_cm_count`)
+                   , '6' = sum(`6_cm_count`)
+                   , '7' = sum(`7_cm_count`)
+                   , '8' = sum(`8_cm_count`)
+                   , '9' = sum(`9_cm_count`)
+                   , '10' = sum(`10_cm_count`)
+                   , '11' = sum(`11_cm_count`)
+                   , '12' = sum(`12_cm_count`)
+                   , '13' = sum(`13_cm_count`)
+                   , '14' = sum(`14_cm_count`)
+                   , '15' = sum(`15_cm_count`)
+                   , '16' = sum(`16_cm_count`)
+                   , '17' = sum(`17_cm_count`)
+                   , '18' = sum(`18_cm_count`)
+                   , '19' = sum(`19_cm_count`)
+                   , '20' = sum(`20_cm_count`)
+                   ) %>% 
+  pivot_longer(cols = `1`:`20`, names_to = 'size_cm', values_to = 'count') %>% 
+  dplyr::mutate(size_cm = as.numeric(size_cm))
+
+ggplot(size_sums_red, aes(x = size_cm, y = count)) +
+   geom_rect(aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+            alpha = 0.3, fill = 'red',
+            data = transform(rect2),
+            inherit.aes = FALSE) + # need this to get the rect to go only in one facet
+  geom_col() +
+  facet_wrap(c('site', 'year')) +
+  # facet_grid('year') +
+  scale_y_continuous(expand = c(0,0)) +
+  # scale_x_continuous(breaks = seq(0,max(swath_longer$size_count,na.rm = T),5)) +
+  # scale_fill_manual(values = c('red4', 'red2')) +
+  labs(x = 'Urchin diameter (cm)', y = 'Count') +
+  # ggtitle("Frequency of purple urchin diameters from subtidal surveys") +
+  theme(strip.background = element_blank(), legend.position = 'none', strip.text.x = element_text(size = 12), plot.title = element_text(size = 15), axis.title = element_text(size = 13), axis.text = element_text(size = 12))
+```
+
+```{r fig.cap = 'Purple urchin densities compared by year, site, and survey type'}
+# Purple urchin densities
+swath_target_den %>% #swath_target_den0 doesn't have survey type yet
+  dplyr::filter(survey_type %in% c('AbU', 'kelpUr', 'URCHIN')) %>%
+  dplyr::filter(classcode == 'STRPUR') %>% #purple urchins only
+  dplyr::filter(!site %in% c('Gerstle', 'Shell Beach')) %>%
+  ggplot(aes(x = year, y = den_m2_corrected, fill = survey_type)) +
+  facet_grid(~site) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf), alpha = 0.01, fill = 'mediumpurple1') + 
+  geom_boxplot()
+  # ggtitle('Purple urchin densities compared by year, site, and survey type')
+  # theme(panel.background = element_rect(fill = 'transparent', color = NA_character_)) # transparent plot background
+```
+
+```{r fig.cap = 'Red urchin densities compared by year, site, and survey type'}
+# Red urchin densities
+swath_target_den %>% 
+  dplyr::filter(survey_type %in% c('AbU', 'kelpUr', 'URCHIN')) %>%
+  dplyr::filter(classcode == 'MESFRA') %>% #purple urchins only
+  dplyr::filter(!site %in% c('Gerstle', 'Shell Beach')) %>%
+  ggplot(aes(x = year, y = den_m2_corrected, fill = survey_type)) +
+  facet_grid(~site) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf), alpha = 0.01, fill = 'red') + 
+  geom_boxplot() +
+  ggtitle('Red urchin densities compared by year, site, and survey type')
+
+# Compare medians directly
+
+  
+```
+
+# Multidimensional analyses of community composition
+Excellent video tutorial for R methods: https://www.youtube.com/watch?v=oLf0EpMJ4yA
+```{r NMDS set up for algae and inverts, include = FALSE, message = FALSE}
+# to visualize how the communities are different
+
+# Next what I probably want to do is check how many surveys were done per transect, and for the community analyses, only use transects with all three surveys. I mean with at least three, and hopefully they include algae and invert and either kelpur or abu. Hm but I should check what surveys were done when there were three just to be sure.
+
+# only use transects that had all three survey types done because then you know you have the full community.
+full_transects <- swath_target_den2 %>% #*** I think this needs to have all the zeros filled in? no it does that below anyway...? uuuhhrrggg pick up here confused about why I added all the zeros previously if I am just going to do it here anyway. 
+  dplyr::count(transect_ID, survey_type) %>% 
+  dplyr::count(transect_ID) %>% 
+  dplyr::filter(n > 2) %>% 
+  dplyr::select(transect_ID)
+  # only use these transects in community analyses.
+full_transects <- full_transects[,1] # now it's just a vector of numbers.
+
+# Check the survey types done for each full transect. 
+# swath_target_den2 %>% filter(transect_ID == full_transects[1]) %>% select(survey_type) %>% unique()
+
+swath_target_den_full_transects <- swath_target_den2 %>% 
+  dplyr::filter(transect_ID %in% full_transects)
+# This data frame has only the transects with full community data. NMDS analysis can proceed!
+
+# Reformatting the data frame for the analysis. cols need to be classcodes.
+swath_matrix_counts <- swath_target_den_full_transects %>% 
+  # dplyr::filter(site %in% c('Fort Ross', 'Timber')) %>% # just FRC and TC
+  select(transect_ID, classcode, den_m2_corrected) %>% # "den_m2_corrected" is the only quantification of species that is corrected for the actual area surveyed (standardized by area). The raw counts are over different areas, which is why I'm using density for the NMDS.
+  # I want each col to be a species, rows to be IDs, and values to be densities.
+  pivot_wider(names_from = 'classcode', values_from = 'den_m2_corrected')
+
+# Do I need to make NAs into 0s? I think so.
+swath_matrix_counts0 <- swath_matrix_counts %>% replace(is.na(.), 0)
+
+## Convert absolute abundance to relative abundance to standardize
+# Skipping this since they're already standardized? I mean they're all in number per m2. That feels standardized. Well not skipping it anymore to try it out. It could be important to standardize the abundance relative to the other abundances within each sample. I can't find any evidence for doing this, so I'm not.
+# swath_matrix_counts0_decostand <- decostand(swath_matrix_counts0, method = 'total')
+# try with and without decostanding it to see what difference it makes. Decostand doesn't make a big difference and it makes the plots harder to read. Another reason not to use it.
+```
+
+```{r check for linearity, normality, and homoscedasticity before performing NMDS and PERMANOVA, include = FALSE}
+# Not complete!
+
+# Linearity
+
+# Normality
+
+# Homoscedasticity
+swath_dist <- vegdist(swath_matrix_counts0) #create a dissimilarity matrix for the betadisper. Groups need to be length 35.
+all_site_groups <- swath_target_den_full_transects %>% 
+  count(transect_ID, site) # there are 35!
+all_site_groups = all_site_groups[,1] # convert to vector
+## perform test
+multi_dispersion_1 <- betadisper(swath_dist, group = all_site_groups)
+anova(multi_dispersion_1)
+TukeyHSD(multi_dispersion_1)
+plot(multi_dispersion_1, ellipse = FALSE, hull = TRUE)
+## Did not work #***
+# the dispersions are significantly different, which makes perfect sense because the sample sizes are wildly different, too. So probably can't really do the permanova test on all the sites at this time since sample sizes are so asymmetric.
+
+```
+
+```{r perform NMDS on all sites, include = FALSE, message = FALSE}
+swath_matrix_counts0$transect_ID = NULL
+
+set.seed(11) # set seed to make sure the metaMDS repeats a best solution.
+MDS1 <- metaMDS(swath_matrix_counts0, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.0691.
+
+## reformat so it can be plotted in ggplot with groupings
+data_scores <- as.data.frame(scores(MDS1)$sites)
+
+## Add back identifier columns
+data_scores$transect_ID = unique(swath_target_den_full_transects$transect_ID) 
+
+# i want to join this with the sites and dates and stuff.
+swath_target_den_sites <- swath_target_den_full_transects %>%
+  # dplyr::filter(site %in% c('Fort Ross', 'Timber')) %>% # just frc and tc
+  dplyr::select(transect_ID,  site, subsite, year, month, day) # just these cols
+swath_target_den_sites <- swath_target_den_sites[!duplicated(swath_target_den_sites),] # remove duplicate rows 
+dim(swath_target_den_sites) # check dimensions. should have 35 rows. Yes, finally!
+
+NMDS_sites <- dplyr::left_join(data_scores, swath_target_den_sites, by = 'transect_ID') # idk why it has two site cols.
+```
+
+```{r fig.cap = 'Nonmetric multidimensional scaling plot showing Bray-Curtis community differences between transects at all sites'}
+
+# Compare with and without decostand
+plot(MDS1, type = 't', main = 'All sites without decostand', cex = .5) # without the decostand. Whoa it shows where each species is on the axes which is actually helpful!!!! TY David Beaune from YouTube.
+
+## Make the ggplot with all sites
+ggplot(NMDS_sites, aes(x = NMDS1, y = NMDS2, color = site, shape = year)) +
+  geom_point(size = 4) +
+  # stat_ellipse() +
+  annotate('text', x = -.45, y = .7, label = paste('Stress = ', round(MDS1$stress,3))) +
+  ggtitle('Swath community dissimilarities') + my_theme
+
+# Note the sample sizes (for 2023-2024 data) are too small/asymmetrical for stats tests on multidimensional/permutational analysis of variance, so this is just for visual fun and not stats. 
+```
+
+```{r NMDS set up with just FRC and TC, include = FALSE, message = FALSE}
+## excluding missing algae surveys ##
+swath_target_den_full_transects_frctc <- 
+  swath_target_den_full_transects %>% filter(site %in% c('Fort Ross', 'Timber'))
+
+swath_matrix_counts_frctc <- swath_target_den_full_transects_frctc %>% 
+  select(transect_ID, classcode, den_m2_corrected) %>% # "den_m2_corrected" is the only quantification of species that is corrected for the actual area surveyed (standardized by area). The raw counts are over different areas, which is why I'm using density for the NMDS.
+  # I want each col to be a species, rows to be IDs, and values to be densities.
+  pivot_wider(names_from = 'classcode', values_from = 'den_m2_corrected')
+
+swath_matrix_counts_frctc$transect_ID = NULL
+# Do I need to make NAs into 0s? I think so.
+swath_matrix_counts0_frctc <- swath_matrix_counts_frctc %>% replace(is.na(.), 0)
+
+## Convert absolute abundance to relative abundance to standardize
+# Skipping this since they're already standardized? I mean they're all in number per m2. That feels standardized.
+swath_matrix_counts0_frctc_decostand <- decostand(swath_matrix_counts0, method = 'total')
+
+set.seed(621) # set seed to make sure the metaMDS repeats a best solution.
+MDS_frctc <- metaMDS(swath_matrix_counts0_frctc, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.185
+# try with decostand
+MDS2_frctc <- metaMDS(swath_matrix_counts0_frctc_decostand, distance = 'bray')
+
+## reformat so it can be plotted in ggplot with groupings
+data_scores_frctc <- as.data.frame(scores(MDS_frctc)$sites)
+
+## Add back identifier columns
+data_scores_frctc$transect_ID = unique(swath_target_den_full_transects_frctc$transect_ID) 
+
+# i want to join this with the sites and dates and stuff.
+swath_target_den_sites_frctc <- swath_target_den_full_transects_frctc %>%
+  dplyr::select(transect_ID,  site, subsite, year, month, day) # just these cols
+swath_target_den_sites_frctc <- swath_target_den_sites_frctc[!duplicated(swath_target_den_sites_frctc),] # remove duplicate rows 
+dim(swath_target_den_sites_frctc) # check dimensions. should have 23 rows. Yes, it does.
+
+NMDS_sites_frctc <- dplyr::left_join(data_scores_frctc, swath_target_den_sites_frctc, by = 'transect_ID')
+```
+
+```{r check for linearity, normality, and homoscedasticity before performing NMDS and PERMANOVA FRC and TC only, include = FALSE}
+# Not complete!
+
+swath_matrix_counts0_frctc_decostand <- decostand(swath_matrix_counts0_frctc, method = 'total')
+
+# Linearity
+
+# Normality
+
+# Homoscedasticity
+decostand_dist_frctc <- vegdist(swath_matrix_counts0_frctc_decostand) #create a dissimilarty matrix for the betadisper. Groups need to be length 23.
+frctc_sites <- swath_target_den_full_transects %>% 
+  filter(site %in% c('Fort Ross', 'Timber')) %>% 
+  count(transect_ID, site) # there are 23!
+frctc_sites = frctc_sites[,2] # convert to vector
+
+## perform test
+multi_dispersion_frctc <- betadisper(decostand_dist_frctc, group = frctc_sites)
+anova(multi_dispersion_frctc) # P = 0.127. Not different! that's good.
+
+plot(multi_dispersion_frctc, ellipse = FALSE, hull = TRUE)
+# the dispersions are significantly different, which makes perfect sense because the sample sizes are wildly different, too. So probably can't really do the permanova test on all the sites at this time since sample sizes are so asymmetric.
+
+```
+
+```{r fig.cap = 'Nonmetric multidimensional scaling plot showing Bray-Curtis community differences between transects at Fort Ross and Timber coves only. Communities were not different among sites (PERMANOVA P = 0.127)'}
+
+## excluding missing algae surveys ##
+# compare without and with decostand
+
+plot(MDS_frctc, type = 't', main = 'FRC & TC without decostand', cex = .5)
+plot(MDS2_frctc, type = 't',main = 'FRC & TC with decostand', cex = .5)
+
+ggplot(NMDS_sites_frctc, aes(x = NMDS1, y = NMDS2, color = site, shape = year)) +
+  geom_point(size = 4) +
+  # stat_ellipse() +
+  annotate('text', x = -.45, y = .7, label = paste('Stress = ', round(MDS_frctc$stress,3))) +
+  ggtitle('Swath community dissimilarities') + 
+  my_theme + theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12))
+```
+
+```{r Test if there is a significant difference btwn the sites, include = FALSE}
+## excluding missing algae surveys ##
+# Calculate bray-curtis dissimilarities
+swath_spp_dist <- vegdist(swath_matrix_counts0, method = 'bray') #not sure why I did this. Maybe for the mrpp?
+# mrpp() multi response permutation procedure and mean dissimilarity matrix. Provides a test of whether there is a significant difference between two or more groups of sampling units. Function metadist() finds the mean within and between block dissimilarities. 
+
+mrpp(swath_matrix_counts0, grouping = unique(NMDS_sites_frctc$transect_ID), permutations = 999, distance = 'bray')
+# It ran but looks like everything is NaN so it probably didn't work. again not sure why I ran this function.
+# Chance corrected within-group agreement A: 
+# Based on observed delta: X and expected delta: Y
+# Significance of delta: 
+
+# another term is dist, which is a dist object of dissimilarities, such as produced by functions dist, vegdist, or designdist. 
+
+# summary(meandist(swath_spp_dist, grouping = swath_matrix_counts$SITE)) # I don't know what this means yet. 
+
+# ANOSIM test also tests if there are differences among groups. 
+## Using all sites.
+ano_test_all = anosim(swath_matrix_counts0, NMDS_sites$site, distance = "bray", permutations = 999)
+ano_test_all # NS
+# large R means larger difs between groups. R = 0.04. Significance = 0.237. 
+
+# Permutational multivariate analysis of variance using distance matrices
+## partitions distance matrices among sources of variation and fits linear models to distance matrices using a permutation test with pseudo-F ratios. Note I still need to verify equal homoscedasticity, which is probably a basic assumption here.
+### adonis2(formula, data, permutations = 999, method = 'bray', sqrt.dist = FALSE, etc.) # forumla is community/dissimilarity matrix (e.g., from vegdist) ~ independent variables. IVs can be continuous or factors and can have interactions. 
+adonis2(swath_matrix_counts0 ~ all_site_groups) # P = 0.09, but no homoscedasticity so it doesn't matter.
+
+## Using just FRC and TC.
+# these did have equal variances, so this result matters.
+ano_test_frctc = anosim(swath_matrix_counts0_frctc, NMDS_sites_frctc$site, distance = 'bray', permutations = 999)
+ano_test_frctc # NS
+adonis2(swath_matrix_counts0_frctc ~ frctc_sites) # P = 0.379
+
+# Next, try the anosim or perhaps adonis with site and year and interaction.
+## FRC TC
+#***
+frctc_years <- swath_target_den_full_transects %>% 
+  filter(site %in% c('Fort Ross', 'Timber')) %>% 
+  count(transect_ID, site, year)
+frctc_years <- frctc_years[,3]
+adonis2(swath_matrix_counts0_frctc ~ frctc_years) # NS
+adonis2(swath_matrix_counts0_frctc ~ frctc_sites * frctc_years) # NS
+```
+
+```{r simper stats all sites, include = FALSE}
+## excluding missing algae surveys ##
+# Which species are most responsible for any community differences observed? Calculate discriminating species between two groups using BC dissimilarities.
+simper_all <- simper(swath_matrix_counts0, group = NMDS_sites$site)
+
+summary(simper_all)
+# looks like the species most important for discriminating among samples are STRPUR, POMGIB, CUCMIN, PATMIN, MESFRA which cumulatively are 97.5% of the differences.
+# POMGIB has a significant P value.
+```
+
+```{r simper plots all sites}
+## excluding missing algae surveys ##
+
+# difs in purple urchins
+species = 'STRPUR'
+
+strpur_medians <- swath_target_den_full_transects %>% 
+  dplyr::filter(year == '2024' & classcode == species) %>% 
+  dplyr::group_by(site) %>% 
+  dplyr::summarise(median = median(den_m2_corrected), n = n()) %>% 
+  mutate(median = round(median, digits = 1), xpos = 1:5, ypos = median + 10) %>% 
+  mutate(median = as.character(median))
+
+# just change TC to 9.0 so it has the same float
+strpur_medians[5,2] = '9.0'
+
+ggplot(swath_target_den_full_transects %>% # filter(classcode == species), aes(x = year, y = den_m2_corrected)) +
+filter(classcode == species & year == '2024'), aes(x = site, y = den_m2_corrected)) +
+  # facet_grid(~site) +
+  # geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf), alpha = 0.3, fill = 'purple') + 
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf),
+      alpha = 0.3, fill = 'purple',
+      data = transform(rect, site = c('Fort Ross', 'Timber')),                  # IDK but it works
+      inherit.aes = FALSE) + # IDK but it works
+  geom_boxplot() +
+  geom_point() +
+  annotate('text', x = strpur_medians$xpos, y = strpur_medians$ypos, label = strpur_medians$median) +
+  labs(y = bquote(paste('Density (no. ', ~m^-2, ')')), x = 'Site') +
+  ggtitle('Purple urchin densities in 2024') +
+  theme_classic() +
+  theme(axis.text = element_text(size = 14), axis.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+# difs in red urchins
+species = 'MESFRA'; ggplot(swath_target_den_full_transects %>% filter(classcode == species), aes(x = year, y = den_m2_corrected))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+# difs in bull kelp
+species = 'NERLUE'
+
+nerlue_medians <- swath_target_den_full_transects %>% 
+  dplyr::filter(year == '2024' & classcode == species) %>% 
+  dplyr::group_by(site) %>% 
+  dplyr::summarise(median = median(den_m2_corrected), n = n()) %>% 
+  mutate(median = round(median, digits = 2), xpos = 1:5, ypos = median + 0.02)
+
+ggplot(swath_target_den_full_transects %>% 
+  # filter(classcode == species), aes(x = year, y = den_m2_corrected)) +
+  filter(classcode == species & year == '2024'), aes(x = site, y = den_m2_corrected)) +
+  # facet_grid(~site) +
+ geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf),
+      alpha = 0.2, fill = 'green4',
+      data = transform(rect, site = c('Fort Ross', 'Timber')),                  # IDK but it works
+      inherit.aes = FALSE) + # IDK but it works
+  geom_boxplot() +
+  geom_point() +
+  annotate('text', x = nerlue_medians$xpos, y = nerlue_medians$ypos, label = nerlue_medians$median) +
+  labs(y = bquote(paste('Density (no. ', ~m^-2, ')')), x = 'Site') +
+  ggtitle('Bull kelp densities in 2024') +
+  theme_classic() +
+  theme(axis.text = element_text(size = 14), axis.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+# difs in red turban snail
+species = 'POMGIB'; ggplot(swath_target_den_full_transects %>% filter(classcode == species), aes(x = year, y = den_m2_corrected))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+# difs in red abalone
+species = 'HALRUF'; ggplot(swath_target_den_full_transects %>% filter(classcode == species), aes(x = year, y = den_m2_corrected))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+# difs in pinto abalone
+species = 'HALKAM'; ggplot(swath_target_den_full_transects %>% filter(classcode == species), aes(x = year, y = den_m2_corrected))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+# difs in fish anemone
+species = 'URTPIS'; ggplot(swath_target_den_full_transects %>% filter(classcode == species), aes(x = year, y = den_m2_corrected))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+```
+
+```{r simper stats for just FRC and TC, include = FALSE}
+## excluding missing algae surveys ##
+simper_frctc <- simper(swath_matrix_counts0_frctc, group = NMDS_sites_frctc$site)
+summary(simper_frctc)
+# The species most important for discriminating among FRC and TC are:
+# STRPUR, LAMSPP, PTECALAD, CUCMIN, MESFRA, PATMIN, NERLUE, HALRUF, DERIMB, ALAMAR, AND URTPIS, which together are 97.6% of the differences.
+# those with significant p values: PTECALAD, MESFRA, HALRUF, URTPIS, HALKAM
+
+# Next, calculate average densities for those species at the two sites so I know which has more, esp. over time. Wait that should be fast.
+swath_target_den_full_transects_frctc
+```
+
+```{r simper plots FRC and TC only}
+## excluding missing algae surveys ##
+# difs in ptery adults
+species = 'PTECALAD'
+ggplot(swath_target_den_full_transects_frctc %>% filter(classcode == species), aes(x = year, y = den_m2_corrected))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+# difs in nereo
+species = 'NERLUE'
+ggplot(swath_target_den_full_transects_frctc
+ %>% filter(classcode == species), aes(x = year, y = den_m2_corrected))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+# difs in mesfra
+species = 'MESFRA'
+ggplot(swath_target_den_full_transects_frctc %>% filter(classcode == species), aes(x = year, y = den_m2_corrected))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+# difs in red abs
+species = 'HALRUF'
+ggplot(swath_target_den_full_transects_frctc %>% filter(classcode == species), aes(x = year, y = den_m2_corrected))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+# difs in pinto abs
+species = 'HALKAM'
+ggplot(swath_target_den_full_transects_frctc %>% filter(classcode == species), aes(x = year, y = den_m2_corrected))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+# difs in urticina piscivora
+species = 'URTPIS'
+ggplot(swath_target_den_full_transects_frctc %>% filter(classcode == species), aes(x = year, y = den_m2_corrected))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+```
+
+# Assuming 0 algae in missing algae surveys in 2022
+```{r NMDS set up for algae and inverts INCLUDING missing algae surveys, include = FALSE, message = FALSE}
+## adding missing algae surveys ##
+
+# Next what I want to do is fill in 0 algae for surveys in 2022 with missing algae surveys. Then for the community analyses, only use transects with all three surveys. I mean with at least three, and hopefully they include algae and invert and either kelpur or abu.
+
+# which 2022 transects were missing algae surveys?
+algae_2022 <- swath_target_den2 %>% 
+  filter(year == 2022) %>% 
+  count(site, transect_ID, survey_type) %>% 
+  filter(survey_type == 'algae_swath') %>% 
+  select(transect_ID) %>% 
+  data.frame()
+  # these transect IDs have algae surveys
+
+not_algae_2022 <- swath_target_den2 %>% 
+  filter(year == 2022) %>% 
+  count(site, transect_ID, survey_type) %>% 
+  filter(!survey_type == 'algae_swath') %>% 
+  select(transect_ID) %>% 
+  data.frame() %>% 
+  unique() # all other surveys: invert, URCHIN, KELPUR, and ABU. 
+
+# now find the difference. What surveys are in 'not_algae_2022' that aren't in 'algae_2022?'
+# algae: 3, 4, 6, 7, 8, 9, 12, 14, 15
+# not algae: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+# answer: 1, 2, 5, 10, 11, 13 are missing algae surveys.
+missing_algae <- c(1, 2, 5, 10, 11, 13)
+
+# create tibble to merge with the missing surveys
+add_0_algae <- swath_target_den2 %>% 
+  dplyr::select(!c(classcode:den_m2_corrected)) %>% # unselect the cols I want to add 0s to
+  dplyr::filter(transect_ID %in% missing_algae) %>% 
+  count(year, month, day, site, subsite, zone, region, block, quad, transect_m, transect_no, transect, transect_ID) %>% # this is just to group unique transects. I don't care about the count. heading and observer were different within transects, so I excluded them. 
+  dplyr::mutate(survey_type = 'algae_swath', classcode = 'NERLUE', count_sum = 0, den_m2 = 0, den_m2_corrected = 0, n = NULL)
+
+swath_target_den0a <- bind_rows(swath_target_den2, add_0_algae)
+
+# only use transects that had all three survey types done because then you know you have the full community.
+full_transects0a <- swath_target_den0a %>% 
+  dplyr::count(transect_ID, survey_type) %>% 
+  dplyr::count(transect_ID) %>% 
+  dplyr::filter(n > 2) %>% 
+  dplyr::select(transect_ID)
+  # only use these transects in community analyses.
+full_transects0a <- full_transects0a[,1] # now it's just a vector of numbers.
+
+# Check the survey types done for each full transect. 
+# swath_target_den2 %>% filter(transect_ID == full_transects[1]) %>% select(survey_type) %>% unique()
+
+swath_target_den_full_transects0a <- swath_target_den0a %>% 
+  dplyr::filter(transect_ID %in% full_transects0a)
+# This data frame has only the transects with full community data. NMDS analysis can proceed!
+
+# Reformatting the data frame for the analysis. cols need to be classcodes.
+swath_matrix_counts0a <- swath_target_den_full_transects0a %>% 
+  # dplyr::filter(site %in% c('Fort Ross', 'Timber')) %>% # just FRC and TC
+  select(transect_ID, classcode, den_m2_corrected) %>% # "den_m2_corrected" is the only quantification of species that is corrected for the actual area surveyed (standardized by area). The raw counts are over different areas, which is why I'm using density for the NMDS.
+  # I want each col to be a species, rows to be IDs, and values to be densities.
+  pivot_wider(names_from = 'classcode', values_from = 'den_m2_corrected')
+
+swath_matrix_counts0a$transect_ID = NULL
+# Do I need to make NAs into 0s? I think so.
+swath_matrix_counts0a_0 <- swath_matrix_counts0a %>% replace(is.na(.), 0)
+
+## Convert absolute abundance to relative abundance to standardize
+# Skipping this since they're already standardized? I mean they're all in number per m2. That feels standardized. Not skipping anymore because standardizing all sites to 1 is different.
+swath_matrix_counts0a_0_decostand <- decostand(swath_matrix_counts0a_0, method = 'total')
+```
+
+```{r check for linearity, normality, and homoskedasticity before performing NMDS and PERMANOVA 0a}
+# NOT DONE YET #***bookmark pick up here. need to perform tests of homoscedasticity and permanovas for the 0 algae analyses.
+
+# Linearity
+
+# Normality
+
+# Homoscedasticity#***
+decostand_dist_0a <- vegdist(swath_matrix_counts0a_0_decostand) #create a dissimilarity matrix for the betadisper. Groups need to be length 35+6=41.
+all_site_groups_0a <- swath_target_den_full_transects0a %>% 
+  count(transect_ID, site) # there are 41!
+all_site_groups_0a = all_site_groups_0a[,2] # convert to vector
+## perform test
+multi_dispersion_0a <- betadisper(decostand_dist_0a, group = all_site_groups_0a)
+anova(multi_dispersion_0a) # P = 0.045, so dispersion is not equal and can't do PERMANOVA. just like before. makes perfect sense.
+TukeyHSD(multi_dispersion_0a)
+plot(multi_dispersion_0a, ellipse = FALSE, hull = TRUE, label = FALSE)
+# the dispersions are significantly different, which makes perfect sense because the sample sizes are wildly different, too. So probably can't really do the permanova test on all the sites at this time since sample sizes are so asymmetric.
+```
+
+```{r perform NMDS on all sites 0a, include = FALSE, message = FALSE}
+# assuming 0 algae for missing 2022 algae surveys
+# This is sort of moot at this point, because for the 2023-2024 data, the dispersions (variances) are too different to compare. 
+set.seed(6344) # set seed to make sure the metaMDS repeats a best solution.
+MDS0a <- metaMDS(swath_matrix_counts0a_0, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.0691.
+# try with decostand
+set.seed(1133)
+MDS0a2 <- metaMDS(swath_matrix_counts0a_0_decostand, distance = 'bray')
+
+## reformat so it can be plotted in ggplot with groupings
+data_scores0a <- as.data.frame(scores(MDS0a)$sites)
+
+## Add back identifier columns
+data_scores0a$transect_ID = unique(swath_target_den_full_transects0a$transect_ID) 
+
+# i want to join this with the sites and dates and stuff.
+swath_target_den_sites0a <- swath_target_den_full_transects0a %>%
+  # dplyr::filter(site %in% c('Fort Ross', 'Timber')) %>% # just frc and tc
+  dplyr::select(transect_ID,  site, subsite, year, month, day) # just these cols
+swath_target_den_sites0a <- swath_target_den_sites0a[!duplicated(swath_target_den_sites0a),] # remove duplicate rows 
+dim(swath_target_den_sites0a) # check dimensions. should have 35+6=41 rows. Yes!
+
+NMDS_sites0a <- dplyr::left_join(data_scores0a, swath_target_den_sites0a, by = 'transect_ID') # idk why it has two site cols.
+```
+
+```{r fig.cap = 'Nonmetric multidimensional scaling plot showing Bray-Curtis community dissimilarities among transects at all sites 0a'}
+## assuming 0 algae for missing 2022 algae surveys ##
+
+# plot without and with decostand for comparison
+plot(MDS0a, type = 't', main = 'All sites without decostand 0a', cex = 0.5) 
+plot(MDS0a2, type = 't', main = 'All sites with decostand 0a', cex = 0.5) 
+
+## Make the ggplot with all sites
+ggplot(NMDS_sites0a, aes(x = NMDS1, y = NMDS2, color = site, shape = year)) +
+  geom_point(size = 4) +
+  # stat_ellipse() +
+  annotate('text', x = -.42, y = .7, label = paste('Stress = ', round(MDS0a$stress,3))) +
+  ggtitle('Swath community dissimilarities 0a') + my_theme
+```
+
+```{r NMDS set up with FRC and TC only 0a, include = FALSE, message = FALSE}
+# assuming 0 algae for missing 2022 algae surveys
+swath_target_den_full_transects_frctc0a <- 
+  swath_target_den_full_transects0a %>% filter(site %in% c('Fort Ross', 'Timber'))
+
+swath_matrix_counts_frctc0a <- swath_target_den_full_transects_frctc0a %>% 
+  select(transect_ID, classcode, den_m2_corrected) %>% # "den_m2_corrected" is the only quantification of species that is corrected for the actual area surveyed (standardized by area). The raw counts are over different areas, which is why I'm using density for the NMDS.
+  # I want each col to be a species, rows to be IDs, and values to be densities.
+  pivot_wider(names_from = 'classcode', values_from = 'den_m2_corrected')
+
+swath_matrix_counts_frctc0a$transect_ID = NULL
+# Do I need to make NAs into 0s? I think so.
+swath_matrix_counts0_frctc0a <- swath_matrix_counts_frctc0a %>% replace(is.na(.), 0)
+
+## Convert absolute abundance to relative abundance to standardize
+# Skipping this since they're already standardized? I mean they're all in number per m2. That feels standardized. JK NOPE standardizing so it's relative to 1 for each group.
+swath_matrix_counts0_frctc0a_decostand <- decostand(swath_matrix_counts0_frctc0a, method = 'total')
+
+set.seed(621) # set seed to make sure the metaMDS repeats a best solution.
+MDS_frctc0a <- metaMDS(swath_matrix_counts0_frctc0a, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.154
+MDS_frctc0a_2 <- metaMDS(swath_matrix_counts0_frctc0a_decostand, distance = 'bray')
+
+## reformat so it can be plotted in ggplot with groupings
+data_scores_frctc0a <- as.data.frame(scores(MDS_frctc0a)$sites)
+
+## Add back identifier columns
+data_scores_frctc0a$transect_ID = unique(swath_target_den_full_transects_frctc0a$transect_ID) 
+
+# I want to join this with the sites and dates and stuff.
+# swath_matrix_counts0_frctc0a
+swath_target_den_sites_frctc0a <-  swath_target_den_full_transects_frctc0a %>%
+  dplyr::select(transect_ID,  site, subsite, year, month, day) # just these cols
+swath_target_den_sites_frctc0a <- swath_target_den_sites_frctc0a[!duplicated(swath_target_den_sites_frctc0a),] # remove duplicate rows 
+dim(swath_target_den_sites_frctc0a) # check dimensions. should have 23+6=29 rows. Yes, it does.
+
+NMDS_sites_frctc0a <- dplyr::left_join(data_scores_frctc0a, swath_target_den_sites_frctc0a, by = 'transect_ID')
+```
+
+```{r check for linearity, normality, and homoscedasticity before performing NMDS and PERMANOVA FRC and TC only 0a, include = FALSE}
+# Not complete!
+# swath_matrix_counts0_frctc0a
+
+# Linearity
+
+# Normality
+
+# Homoscedasticity
+decostand_dist_frctc0a <- vegdist(swath_matrix_counts0_frctc0a) #create a dissimilarty matrix for the betadisper. Groups need to be length...29ish
+frctc_groups_0a <- swath_target_den_full_transects_frctc0a %>% 
+  count(transect_ID, site) # there are 29
+frctc_groups_0a = frctc_groups_0a[,2] # convert to vector
+## perform test
+multi_dispersion_frctc0a <- betadisper(decostand_dist_frctc0a, group = frctc_groups_0a)
+anova(multi_dispersion_frctc0a) # P > 0.05 which is good; dispersions seem to be equal enough to run further analyses
+permutest(multi_dispersion_frctc0a) # same result, different method (permutational method): P = 0.82
+
+plot(multi_dispersion_frctc0a, ellipse = FALSE, hull = TRUE)
+# the dispersions aren't significantly different which is great so further analyses can proceed with this assupmtion met. 
+```
+
+```{r fig.cap = 'Nonmetric multidimensional scaling plot showing Bray-Curtis community differences between transects at Fort Ross and Timber coves assuming missing algae surveys had 0 algae. Significant interaction between site and year (PERMANOVA P < 0.01)'}
+## assuming 0 algae for missing 2022 algae surveys ##
+# Compare with and without decostand
+plot(MDS_frctc0a, type = 't', main = 'FRC & TC without decostand 0a', cex = .5)
+plot(MDS_frctc0a_2, type = 't', main = 'FRC & TC with decostand 0a', cex = .5)
+
+ggplot(NMDS_sites_frctc0a, aes(x = NMDS1, y = NMDS2, color = site, shape = year)) +
+  geom_point(size = 4) +
+  stat_ellipse() +
+  annotate('text', x = 1.7, y = 1.2, label = paste('Stress = ', round(MDS_frctc0a$stress,3))) +
+  ggtitle('Swath community dissimilarities 0a') + 
+  my_theme + theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12)) 
+```
+
+```{r Test if there is a significant difference btwn the sites FRC and TC only 0a, include = FALSE}
+# assuming 0 algae for missing 2022 algae surveys
+
+# Calculate bray-curtis dissimilarities
+swath_spp_dist_frctc0a <- vegdist(swath_matrix_counts0_frctc0a, method = 'bray') #not sure why I did this. Maybe for the mrpp?
+# mrpp() multi response permutation procedure and mean dissimilarity matrix. Provides a test of whether there is a significant difference between two or more groups of sampling units. Function metadist() finds the mean within and between block dissimilarities. 
+
+mrpp(swath_matrix_counts0_frctc0a, grouping = unique(NMDS_sites_frctc0a$transect_ID), permutations = 999, distance = 'bray')
+# It ran but looks like everything is NaN so it probably didn't work. again not sure why I ran this function.
+# Chance corrected within-group agreement A: 
+# Based on observed delta: X and expected delta: Y
+# Significance of delta: 
+
+# another term is dist, which is a dist object of dissimilarities, such as produced by functions dist, vegdist, or designdist. 
+
+# summary(meandist(swath_spp_dist, grouping = swath_matrix_counts$SITE)) # I don't know what this means yet. 
+
+# ANOSIM test also tests if there are differences among groups. 
+## Using all sites.
+ano_test_frctc0a = anosim(swath_matrix_counts0_frctc0a, NMDS_sites_frctc0a$site, distance = "bray", permutations = 999)
+ano_test_all # NS
+# large R means larger difs between groups.
+
+# PERMANOVA
+
+adonis2(swath_matrix_counts0_frctc0a ~ NMDS_sites_frctc0a$site)#*** hm kinda almost different overall!
+
+adonis2(swath_matrix_counts0_frctc0a ~ NMDS_sites_frctc0a$year) # years don't matter
+
+adonis2(swath_matrix_counts0_frctc0a ~ NMDS_sites_frctc0a$site + NMDS_sites_frctc0a$year) # both main effects. only shows one term "Model" P = 0.024
+
+adonis2(swath_matrix_counts0_frctc0a ~ NMDS_sites_frctc0a$site * NMDS_sites_frctc0a$year)#*** well P = 0.006, but it doesn't show the interaction terms, so I'm confused.
+
+adonis2(swath_matrix_counts0_frctc0a ~ NMDS_sites_frctc0a$site:NMDS_sites_frctc0a$year) #interaction only: P = 0.005ish cool beans 
+
+# This is evidence that the communities changed significantly over time relative to each other at the two sites. Would be most meaningful if one of these was a control site. 
+
+```
+
+# Similarity percentage analyses 0a
+
+```{r simper stats all sites 0a, include = FALSE}
+# assuming 0 algae for missing 2022 algae surveys
+
+# Which species are most responsible for any community differences observed? Calculate discriminating species between two groups using BC dissimilarities.
+simper_0a <- simper(swath_matrix_counts0a_0, group = NMDS_sites0a$site)#***
+
+summary(simper_0a)
+# looks like the species most important for discriminating among samples are STRPUR, POMGIB, CUCMIN, PATMIN, MESFRA which cumulatively are 97.5% of the differences.
+# POMGIB has a significant P value.
+```
+
+```{r simper plots all sites 0a, include = FALSE}
+# assuming 0 algae for missing 2022 algae surveys
+# not sure yet this is worth my time since the sample sizes for most of the sites is so small.
+```
+
+```{r simper stats FRC and TC only 0a, include = FALSE}
+# assuming 0 algae for missing 2022 algae surveys
+
+# Which species are most responsible for any community differences observed? Calculate discriminating species between two groups using BC dissimilarities.
+simper_frctc0a <- simper(swath_matrix_counts0_frctc0a, group = NMDS_sites_frctc0a$site)
+
+summary(simper_frctc0a)
+
+mean_den_top_simpers_frctc0a <- swath_target_den_full_transects_frctc0a %>% 
+  filter(classcode %in% c('STRPUR', 'LAMSPP', 'PATMIN', 'PTECALAD', 'MESFRA', 'CUCMIN', 'NERLUE', 'HALRUF', 'DERIMB', 'APOCAL', 'URTPIS')) %>% 
+  group_by(site, year, transect_ID, classcode) %>% 
+  summarise(mean_den = mean(den_m2_corrected, sd = sd(den_m2_corrected), n = n()))
+```
+
+```{r simper plots FRC and TC only 0a}
+# assuming 0 algae for missing 2022 algae surveys
+
+# difs in strpur
+species = 'STRPUR'
+ggplot(mean_den_top_simpers_frctc0a %>% filter(classcode == species), aes(x = year, y = mean_den))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+# difs in mesfra
+species = 'MESFRA'
+ggplot(mean_den_top_simpers_frctc0a %>% filter(classcode == species), aes(x = year, y = mean_den))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+# difs in lam species. juveniles I think.
+species = 'LAMSPP'
+ggplot(mean_den_top_simpers_frctc0a %>% filter(classcode == species), aes(x = year, y = mean_den))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+# difs in patmin. bat star.
+species = 'PATMIN'
+ggplot(mean_den_top_simpers_frctc0a %>% filter(classcode == species), aes(x = year, y = mean_den))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+# difs in ptery adults
+species = 'PTECALAD'
+ggplot(mean_den_top_simpers_frctc0a %>% filter(classcode == species), aes(x = year, y = mean_den))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+# difs in cucmin. Cucumber
+species = 'CUCMIN'
+ggplot(mean_den_top_simpers_frctc0a %>% filter(classcode == species), aes(x = year, y = mean_den))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+# difs in nereo
+species = 'NERLUE'
+ggplot(mean_den_top_simpers_frctc0a %>% filter(classcode == species), aes(x = year, y = mean_den))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+# difs in red abs
+species = 'HALRUF'
+ggplot(mean_den_top_simpers_frctc0a %>% filter(classcode == species), aes(x = year, y = mean_den))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+# difs in urticina piscivora
+species = 'URTPIS'
+ggplot(mean_den_top_simpers_frctc0a %>% filter(classcode == species), aes(x = year, y = mean_den))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+# difs in derimb. Leather star.
+species = 'DERIMB'
+ggplot(mean_den_top_simpers_frctc0a %>% filter(classcode == species), aes(x = year, y = mean_den))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+# difs in apocal. cucumber I believe
+species = 'APOCAL'
+ggplot(mean_den_top_simpers_frctc0a %>% filter(classcode == species), aes(x = year, y = mean_den))+
+  facet_grid(~site) +
+  geom_boxplot() +
+  geom_point() +
+  ggtitle(species)
+
+```

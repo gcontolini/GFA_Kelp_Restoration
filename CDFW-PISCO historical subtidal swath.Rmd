@@ -1,0 +1,342 @@
+---
+title: "CDFW subtidal swath"
+subtitle: "By Gina Contolini. Greater Farallones Association, NOAA Affiliate"
+author: "Greater Farallones and Cordell Bank National Marine Sanctuaries"
+date: "Updated on `r Sys.Date()`"
+header-includes:
+- \usepackage{float}
+- \floatplacement{figure}{H}
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(flextable)
+```
+
+```{r load data}
+# CDFW Dataset from: https://data.cnra.ca.gov/dataset/kelp-forest-transect-surveys-conducted-along-30x2m-transects-on-rocky-reef-habitats-from-0-60-ft-de
+cdfw_locations <- read_csv('N_Coast_KelpForestSurveys_LOCATIONS_v4_20240105.csv')
+glimpse(cdfw_locations)
+
+# Timber Cove = TC
+# Fort Ross = FR
+# Ocean Cove = OC
+# Salt Point State Park (Gerstle Cove no take MPA) = SPnotake
+
+urchin_transects <- read_csv('CDFW_FR_TC_OC_SPnotake_transects_with_urchin_counts_20260403.csv') # a summary from Jenny from CDFW just to see which transects had urchins out of the total number of transects
+urchin_transects$Year_factor = factor(urchin_transects$Year, levels = c(1999:2026))
+glimpse(urchin_transects)
+
+cdfw_counts <- read_csv('N_Coast_KelpForestSurveys_Observed_Species_COUNTS_v8_20251210.csv')
+cdfw_counts$Year_factor <- factor(
+  cdfw_counts$Year, levels  = unique(cdfw_counts$Year)[order(unique(cdfw_counts$Year))]
+                     )
+glimpse(cdfw_counts)
+
+# Do they have sizes somewhere? Maybe in a different csv.
+cdfw_sizes <- read_csv("N_Coast_KelpForestSurveys_Observed_Species_SIZES_v5_20251210.csv")
+cdfw_sizes$Year <- factor(cdfw_sizes$Year, levels = unique(cdfw_sizes$Year)[order(unique(cdfw_sizes$Year))])
+glimpse(cdfw_sizes) # size is probably in mm. 
+
+##### PISCO data #####
+# Dataset from: https://data.piscoweb.org/metacatui/view/doi%3A10.6085%2FAA%2FPISCO_kelpforest.1.11. That dataset does not include implicit zeros. You have to ask Dan Malone for it. It's called MLPA_swath_CLEAN.csv.
+swath_pisco <- read_csv('MLPA_swath_CLEAN.csv') # includes implicit zeros. From Dan Malone 2026-06-06
+sites_pisco <- read_csv('PISCO_kelpforest_site_table.1.11.csv')
+sizes_pisco <- read_csv('PISCO_kelpforest_swath.1.11.csv')
+```
+
+```{r summarize CDFW densities}
+locations %>% 
+  filter(SiteName %in% c('Timber Cove', 'Fort Ross State Park (inside MPA)', 'Ocean Cove', 'Salt Point State Park (Gerstle Cove no take MPA)', 'Salt Point State Park (North)', 'Salt Point State Park (South)')) %>% 
+  flextable()
+
+counts %>% 
+  # filter(SpeciesID == 'U11') %>% 
+  filter(DFW_short_code %in% c('TC', 'FR', 'OC', 'SPnotake', 'SPin', 'SPout')) %>% 
+  group_by(Year, DFW_short_code) %>% 
+  summarise(N = n()) %>% 
+  # mutate(presence = if_else(N > 0, 1, 0)) %>% 
+  ggplot(aes(x = Year, y = DFW_short_code)) +
+  ggtitle('Survey years') +
+  geom_point(size = 4, alpha = .5) +
+  scale_x_continuous(breaks = seq(1998,2026,1)) +
+  theme(axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1), axis.ticks.x = element_line())
+
+# urchin transects, a summarized data summary by Jenny, CDFW
+urchin_transects %>% 
+  filter(Species == "Purple Urchin") %>% 
+  mutate(prop_with_urchins = NumTransectsWithCounts / TotalNumTransects) %>% 
+  ggplot(aes(x = Year, y = prop_with_urchins, color = DFW_short_code)) +
+  geom_point(size = 3, alpha = 0.5, position = position_dodge(.5)) +
+  scale_x_continuous(limits = c(1999, 2026), breaks = c(1999:2026)) +
+  geom_vline(xintercept = 2016, color = 'skyblue') +
+  ggtitle("Purple urchins only") +
+  theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1))
+
+urchin_transects %>% 
+  mutate(prop_with_urchins = NumTransectsWithCounts / TotalNumTransects) %>% 
+  filter(Year > 2015, Species == "Purple Urchin") %>% 
+  arrange(DFW_short_code, Year) %>% 
+  flextable()
+
+# How many total transects in/after 2016?
+urchin_transects %>% 
+  filter(Year > 2015) %>% 
+  summarize(sum = sum(TotalNumTransects))
+  
+```
+
+```{r add implicit zeros to CDFW data}
+cdfw_den <- counts %>% # formerly site_counts
+  rename(site = DFW_short_code, count = Count, year = Year, month = Month, day = Day) %>% 
+  filter(site %in% c('TC', 'FR', 'OC', 'SPnotake')) %>% 
+  select(site, year, month, day, SurveyNum, SpeciesID, count) %>% 
+  filter(SpeciesID %in% c('U1', 'U11', 'S91')) 
+  # purple urchins are coded U11
+  # red urchins are coded U1
+  # sunflower stars are coded as S91
+  # note: confirmed that when Presence == 'absence', Count == 0 in all cases.
+# What does Count mean? How to calculate density with that. 'All surveys were done using SCUBA along 30m x 2m transects (60 m2 total area) randomly placed in the subtidal zone in rocky habitats dominated by bull kelp, Nereocystis luetkeana, forests. These randomly placed band transect surveys were stratified by depth (A=0-15, B=16-30, C=31-45, D=46-60 ft) as we know sea urchin and abalone populations differ by depth.'
+
+# Add implicit zeros for purple urchins.
+
+######## example using complete() #############
+practice <- tibble(year = c(rep(2022, 4), rep(2023, 4)),
+                   month = c(rep(9, 4), rep(7, 4)),
+                   day = c(rep(14, 4), rep(8, 4)),
+                   site = c(rep('FRC',4), rep('TC', 4)),
+                   subsite = c('Main','Main','North','North', rep('Main',4)), 
+                   survey_type = c(rep('AbU', 4), rep('KELPUR', 4)),
+                   transect_ID = c(1,1,2,2,3,3,4,4), 
+                   classcode = c('HALRUF', 'STRPUR', 'HALKAM', 'MESFRA', 'STRPUR', 'PTECALJUV', 'STRPUR', 'NERLUEJUV'),
+                   den_m2_corrected = c(0, 22.5, 1.91, 3, 15.2, 1.3, 0.1, 5))
+
+practice %>% 
+  group_by(survey_type) %>% # within each unique value of survey_type,
+  complete(transect_ID, classcode) %>% # create every combo of transect_ID and classcode and put NA for all other variables.
+  mutate(den_m2_corrected = replace_na(den_m2_corrected, 0)) # make this value 0 instead of NA.
+#########
+
+# Add back implicit zeros for purple urchin counts for every unique SurveyNum. AKA if U11 isn't present, make it into a zero.
+cdfw_den_0 <- cdfw_den %>% 
+  complete(SurveyNum, SpeciesID) %>% # create every combo of SurveyNum and SpeciesID and put NA for all missing variables
+  mutate(count = replace_na(count, 0)) %>% 
+  mutate(density_m2 = count / 60) %>% # calculate density as count / 60 m2
+  select(SurveyNum, SpeciesID, count, density_m2)
+
+# Now I need to add site, year, month, day. Make a key table.
+cdfw_den_key <- cdfw_den %>% 
+  distinct(site, year, month, day, SurveyNum)
+
+# Add back metadata to complete tibble
+cdfw_den_complete <- full_join(cdfw_den_0, cdfw_den_key) %>% 
+  mutate(source = 'CDFW')
+  
+# Check how many rows there are per surveyNum
+cdfw_den_complete %>% 
+  count(SurveyNum) %>% 
+  distinct(n) # ONLY 3. YAY. Because I'm only considering U1, U11, and S91.
+```
+
+```{r calculate and plot urchin densities per year from CDFW surveys}
+#PSU density
+cdfw_den_complete %>% 
+  filter(!year == 2017) %>% # Shelby says they did not survey for urchins in 2017
+  group_by(year, site, SpeciesID) %>% 
+  summarise(mean_den = mean(density_m2), sd = sd(count), n = n()) %>% 
+  filter(SpeciesID == 'U11') %>% 
+  ggplot(aes(x = year, y = mean_den, color = site)) +
+  # geom_errorbar(aes(ymin = 0, ymax = mean_den + sd), width = 0, position = position_dodge(0.5)) +
+  geom_point(size = 3, position = position_dodge(0.5)) +
+  geom_line(position = position_dodge(0.5)) +
+  scale_x_continuous(breaks = 1999:2025) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 40, vjust = 1, hjust = 1)) +
+  ggtitle('Mean PSU density per year and site CDFW (implicit 0s added)') 
+
+#RSU density
+cdfw_den_complete %>% 
+  filter(!year == 2017) %>% # Shelby says they did not survey for urchins in 2017
+  group_by(year, site, SpeciesID) %>% 
+  summarise(mean_den = mean(density_m2), sd = sd(count), n = n()) %>% 
+  filter(SpeciesID == 'U1') %>% 
+  ggplot(aes(x = year, y = mean_den, color = site)) +
+  # geom_errorbar(aes(ymin = 0, ymax = mean_den + sd), width = 0, position = position_dodge(0.5)) +
+  geom_point(size = 3, position = position_dodge(0.5)) +
+  geom_line(position = position_dodge(0.5)) +
+  scale_x_continuous(breaks = 1999:2025) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 40, vjust = 1, hjust = 1)) +
+  ggtitle('Mean RSU density per year and site (implicit 0s added)') 
+
+counts %>% 
+  filter(Year == 2017 & DFW_short_code %in% c('FR', 'OC', 'TC', 'SPnotake')) %>%
+  distinct(SpeciesID)
+```
+
+```{r summarise CDFW urchin sizes. Not nearly enough data.}
+# Reminder:
+## purple urchins are coded U11
+## red urchins are coded U1
+## sunflower stars are S91
+
+cdfw_psu_sizes <- cdfw_sizes %>% 
+  filter(SpeciesID == 'U11') %>%  # %in% c('U1', 'U11', 'S91')) %>% # MESFRA, STRPUR, PYCHEL
+  # filter(DFW_short_code %in% c('FR', 'TC', 'OC', 'SPnotake')) %>% # need to pool all sites together since there are only 15 size observations from our four study sites.
+  select(DFW_short_code, Year, Month, Day, SpeciesID, Size, Comments) %>% 
+  mutate(size_cm = Size/10) # make size in cm to match other plots
+
+cdfw_psu_sizes_medians <- cdfw_psu_sizes %>% 
+  group_by(Year) %>% 
+  summarise(mean = mean(size_cm), SD = sd(size_cm), median = median(size_cm), n = n()) %>% 
+  mutate(y_pos = median + 0.5)
+
+ggplot(cdfw_psu_sizes, aes(x = Year, y = size_cm)) +
+  geom_boxplot() +
+  geom_text(data = cdfw_psu_sizes_medians, aes(label = median), y = cdfw_psu_sizes_medians$y_pos, parse = TRUE)
+
+# WTF 2018 and 2019 are HUGE. 
+cdfw_psu_sizes %>% filter(DFW_short_code == 'CCout')
+
+
+```
+
+```{r PISCO PSU densities from sites closest to ours, all historical data}
+# Plot x axis as time and y axis as psu density in m2.
+close_sites <- c('SALT_POINT_MPA_2', 'SALT_POINT_MPA_3', 'SALT_POINT_REFERENCE_1', 'SALT_POINT_REFERENCE_2', 'SALT_POINT_REFERENCE_3', 'SALT_POINT_REFERENCE_4', 'SALT_POINT_REFERENCE_5')
+
+pisco_psu_den_raw <- swath_pisco %>% 
+  filter(site %in% close_sites)  %>% 
+  filter(classcode == 'STRPURAD') %>% 
+  group_by(year, month, day, site, zone, transect, classcode) %>% 
+  summarise(tot_count = sum(count, na.rm = T)) %>% 
+  mutate(density_m2 = tot_count / 60) %>% 
+  mutate(source = 'PISCO')
+
+# PSU densities
+pisco_psu_den <- swath_pisco %>% 
+  filter(site %in% close_sites)  %>% 
+  filter(classcode == 'STRPURAD') %>% 
+  group_by(year, month, day, site, zone, transect, classcode) %>% 
+  summarise(tot_count = sum(count, na.rm = T)) %>% 
+  mutate(tot_den_m2 = tot_count / 60) %>% 
+  group_by(year, site) %>% 
+  summarise(mean_den = mean(tot_den_m2), sd = sd(tot_den_m2), n = n()) %>% 
+  mutate(se = sd / sqrt(n)) %>% 
+  mutate(source = 'PISCO')
+  
+pisco_psu_den %>% 
+  ggplot(aes(x = year, y = mean_den, color = site)) +
+  geom_point(size = 3, position = position_dodge(.5)) +
+  geom_line(position = position_dodge(0.5)) +
+  scale_y_continuous(breaks = seq(0,34,2)) +
+  scale_x_continuous(breaks = seq(2010,2024,1)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1), axis.ticks.x = element_line(), legend.position = c(.15, .75)) +
+  ggtitle('Mean PSU density per year and site PISCO')
+
+# Kelp densities
+pisco_kelp_den <- swath_pisco %>% 
+  filter(site %in% c('SALT_POINT_MPA_2', 'SALT_POINT_MPA_3', 'SALT_POINT_REFERENCE_1', 'SALT_POINT_REFERENCE_2', 'SALT_POINT_REFERENCE_3', 'SALT_POINT_REFERENCE_4', 'SALT_POINT_REFERENCE_5'))  %>% 
+  filter(classcode %in% c('NERLUE', 'LAMREC')) %>% 
+  group_by(year, month, day, site, zone, transect, classcode) %>% 
+  summarise(tot_count = sum(count, na.rm = T)) %>% 
+  mutate(tot_den_m2 = tot_count / 60) %>% 
+  group_by(year, site) %>% 
+  summarise(mean_den = mean(tot_den_m2), n = n())
+
+pisco_kelp_den %>% 
+  ggplot(aes(x = year, y = mean_den, color = site)) +
+  geom_point(size = 3, alpha = 0.5) +
+  geom_line() +
+  # scale_y_continuous(breaks = seq(0,34,2)) +
+  scale_x_continuous(breaks = seq(2010,2024,1)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1), axis.ticks.x = element_line()) +
+  ggtitle('Mean NERLUE + LAMREC density per year and site PISCO')
+
+```
+
+```{r PISCO urchin sizes}
+glimpse(sizes_pisco)
+
+samplep <- sizes_pisco %>% filter(!is.na(size)) %>%  filter(classcode == 'STRPURAD') %>% head()
+samplep %>% 
+  uncount(weights = count)
+
+strpur_sizes_pisco <- sizes_pisco %>% 
+  filter(str_detect(classcode, 'STRPUR')) %>% 
+  filter(!is.na(size)) %>% 
+  filter(site %in% close_sites) %>%  # only sites that interest us
+  uncount(weights = count) %>% #28.7k rows. ok
+  mutate(year = as.factor(year))
+
+# create table of medians to paste on boxplots
+strpur_sizes_medians <- strpur_sizes_pisco %>% 
+  group_by(year) %>% 
+  summarise(median = median(size, na.rm = T), n = n()) %>% 
+  mutate(y_pos = median + 0.4)
+
+# plot sizes in boxplots by sites and year
+ggplot(strpur_sizes_pisco, aes(x = year, y = size)) +
+  geom_boxplot() +
+  scale_y_continuous(breaks = seq(0, 10, 1)) +
+  geom_text(data = strpur_sizes_medians, aes(label = median), y = strpur_sizes_medians$y_pos, parse = TRUE)
+
+# it looks like they only recorded sizing in 2011, 2017, 2018, and 2024. Yea that's right because those are the only years with any STRPUR data!
+  
+
+```
+
+```{r combine CDFW data and PISCO data}
+cdfw_psu_den <- cdfw_den_complete %>% 
+  group_by(year, site, SpeciesID) %>% 
+  summarise(mean_den = mean(density_m2), sd = sd(count), n = n()) %>% 
+  mutate(se = sd / sqrt(n)) %>% 
+  filter(SpeciesID == 'U11') %>% 
+  filter(!year == 2017) %>% 
+  mutate(source = 'CDFW') %>% 
+  ungroup() %>% 
+  select(!SpeciesID)
+
+cdfw_pisco_psu_mean_den <- bind_rows(pisco_psu_den, cdfw_psu_den) %>% 
+  mutate(source_site = paste(source, site, sep = '_'))%>% 
+  mutate(heatwave = if_else(year > 2012,'post', 'pre')
+  )
+
+ggplot(cdfw_pisco_psu_mean_den, aes(x = year, y = mean_den, color = source_site)) +
+  geom_errorbar(aes(ymin = mean_den - se, ymax = mean_den + se), width = 0, alpha = 0.5) +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks = seq(1999, 2024, 1)) +
+  scale_y_continuous(breaks = seq(0, 50, 5)) +
+  coord_cartesian(ylim = c(0, 50)) + # prevents the scale from showing the full error bar
+  theme_bw() +
+  theme(legend.position = c(.15, .6), axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1), axis.ticks.x = element_line())
+
+# table summary
+## I want average PSU density 2004 to 2012, then average post 2012.
+cdfw_pisco_psu_mean_den %>% 
+  group_by(heatwave) %>% 
+  summarise(mean_psu_den = mean(mean_den), sd = sd(mean_den), min = min(mean_den), max = max(mean_den), n = n())
+
+# boxplot version
+cdfw_den_complete_join <- cdfw_den_complete %>% 
+  ungroup() %>% 
+  select(year, month, day, site, density_m2, source)
+pisco_psu_den_raw_join <- pisco_psu_den_raw %>% 
+  ungroup() %>% 
+  select(year, month, day, site, density_m2, source)
+
+cdfw_pisco_psu_raw <- bind_rows(cdfw_den_complete_join, pisco_psu_den_raw_join) %>% 
+  mutate(source_site =paste(source, site, sep = '_')) %>% 
+  mutate(year_factor = as.factor(year))
+
+ggplot(cdfw_pisco_psu_raw, aes(x = year_factor, y = density_m2, fill = source_site)) +
+  geom_boxplot() +
+  theme_bw()
+```

@@ -1,0 +1,296 @@
+---
+title: "Purple Urchin Removal Maps"
+subtitle: "By Gina Contolini. Gina.Contolini@noaa.gov"
+author: "Greater Farallones Association and Greater Farallones and Cordell Bank National Marine Sanctuaries"
+date: "Updated on `r Sys.Date()`"
+output: 
+  pdf_document
+editor_options: 
+  chunk_output_type: console
+always_allow_html: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+# load packages
+library(tidyverse)
+library(ggmap)
+library(ggspatial) #for scale bar
+library(RColorBrewer) # for good color schemes
+library(cowplot) # to overlay maps
+library(maps) # it just told me I need to install this
+
+#### Create plot theme ####
+theme_set(theme( 
+   panel.background = element_blank(), # remove panel background
+   # panel.grid.minor.x = element_blank(), # remove minor x axis grid line
+   # panel.grid.major.x = element_blank(), # remove major x axis grid line
+   panel.grid = element_blank(), # remove all grid lines
+   # axis.text = element_text(size = 13,color = 'black'), #makes axis labels bigger
+   # axis.title = element_text(size = 15), #makes axis title bigger and bold
+   # axis.title.y = element_text(margin=margin(0,10,0,5)), #pushes the y axis title away from the y axis labels
+   # axis.text.x = element_text(margin=margin(0,0,20,0)), #pushes the x axis title away from the x axis labels and pushes the bars down closer to the x axis labels
+   # legend.title = element_text(size = 16),
+   # legend.text = element_text(size = 16),
+   legend.background = element_blank(),
+   # panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.5), # border around the whole plot
+   # plot.title = element_text(size = 15),
+   legend.key = element_blank()
+))
+```
+In 2023, the Sonoma Kelp Restoration Project led by Greater Farallones Association and Greater Farallones and Cordell Bank National Marine Sanctuaries worked with five commercial red sea urchin divers to remove 24,301 lbs of purple sea urchins from Fort Ross and Timber coves in Sonoma County. The divers used their own equipment and commercial fishing permits, and Greater Farallones Association purchased the purple urchins under a commercial fish buyer license (#86681).
+
+```{r load and tidy up the data}
+# load coordinates you want to plot
+removal_coords <- read_csv('Purple urchin landings datasheet - removal_coords.csv')
+# make date a date class so it plots continuous not categorical
+removal_coords$date = dmy(removal_coords$date)
+# also make a factor date so it shows all dates in the legend
+removal_coords$date_f = factor(removal_coords$date, levels = c(
+  "8-Sep-2023", "13-Sep-2023",  "14-Sep-2023", "15-Sep-2023", "16-Sep-2023", "17-Sep-2023", "18-Sep-2023", "22-Sep-2023", "23-Sep-2023", "24-Sep-2023", "1-Oct-2023", "2-Oct-2023", "5-Oct-2023", "6-Oct-2023", "7-Oct-2023", "8-Oct-2023", "9-Oct-2023", "13-Oct-2023", "26-Oct-2023", "28-Oct-2023", "29-Oct-2023", "30-Oct-2023", "31-Oct-2023", "1-Nov-2023", "2-Nov-2023"))
+# grid coordinates
+frc_grid_coords <- read_csv('Purple urchin landings datasheet - frc_grid_coords.csv')
+frc_grid_corners <- frc_grid_coords %>% filter(Block %in% c('A', 'B', 'C') & !Quad == "Center")
+
+# must get API key first for some reason. Do the following once per R session:
+ggmap::register_stadiamaps('8d134a7f-55f5-4eac-a02c-eecd8c3d4784') #here's where I got that API key: https://client.stadiamaps.com/dashboard/#/property/19840/. Eventually it will probably expire and I'll have to get a new API key.
+## North arrow and scale bar features demonstrated here: https://stackoverflow.com/questions/77437044/add-scalebar-and-north-arrow-in-a-ggmap-without-using-ggsn
+
+# make the restoration grid into an sf object so I can manipulate it #***
+# points  <- st_multipoint(as.matrix(frc_grid_coords_dd)) # creates an sf multipoint feature.
+## Still trying to figure out how to make a square and plot it. I think it might be a sf_polygon?
+```
+
+```{r Fort Ross Cove map}
+#### Define the restoration grid (This is approximate; I don't have the coords of all the corners). Specifically, I don't have the west and south edges.####
+W_lon = frc_grid_coords$Longitude_DD[which(frc_grid_coords$Quad == 'C4')] - 0.00023
+S_lat = frc_grid_coords$Latitude_DD[which(frc_grid_coords$Quad == 'B2')] - 0.00015 
+
+N_edge <- aes(
+  x =  frc_grid_coords$Longitude_DD[which(frc_grid_coords$Block == 'A east boundary')], 
+  y =  frc_grid_coords$Latitude_DD[which(frc_grid_coords$Block == 'A north boundary')], 
+  xend = W_lon,
+  yend = frc_grid_coords$Latitude_DD[which(frc_grid_coords$Block == 'A north boundary')]
+)
+
+E_edge <- aes(
+  x = frc_grid_coords$Longitude_DD[which(frc_grid_coords$Block == 'A east boundary')], 
+  y = frc_grid_coords$Latitude_DD[which(frc_grid_coords$Block == 'A north boundary')], 
+  xend = frc_grid_coords$Longitude_DD[which(frc_grid_coords$Block == 'A east boundary')],
+  yend = S_lat
+)
+
+W_edge <- aes(
+  x = W_lon,
+  y = frc_grid_coords$Latitude_DD[which(frc_grid_coords$Block == 'A north boundary')],
+  xend = W_lon,
+  yend = S_lat
+)
+
+S_edge <- aes(
+  x = W_lon,
+  y = S_lat,
+  xend = frc_grid_coords$Longitude_DD[which(frc_grid_coords$Block == 'A east boundary')],
+  yend = S_lat
+)
+
+#### Create the map! ####
+frc_box = c(-123.252, 38.508, -123.24, 38.515) # This is the bounding box. c(lowerleftlon, lowerleftlat, upperrigthlon, upperrightlat)
+
+frc_map <- ggmap(get_stadiamap(bbox = frc_box, zoom = 16)) + #higher zoom increases resolution
+  geom_segment(N_edge) + #these 4 segments create lines according to the coords I made above.
+  geom_segment(E_edge) +
+  geom_segment(W_edge) +
+  geom_segment(S_edge) +
+  # annotate('text', x = frc_grid_coords$Longitude_DD[which(frc_grid_coords$Block == 'A' & frc_grid_coords$Quad == 'Center')], 
+  #                  y = frc_grid_coords$Latitude_DD[which(frc_grid_coords$Block == 'A' & frc_grid_coords$Quad == 'Center')],
+  #          label = 'A') + # writes "A" in the correct block
+  # annotate('text', x = frc_grid_coords$Longitude_DD[which(frc_grid_coords$Block == 'B' & frc_grid_coords$Quad == 'Center')], 
+  #                  y = frc_grid_coords$Latitude_DD[which(frc_grid_coords$Block == 'B' & frc_grid_coords$Quad == 'Center')],
+  #          label = 'B') + # writes "B" in the correct block
+  # annotate('text', x = frc_grid_coords$Longitude_DD[which(frc_grid_coords$Block == 'C' & frc_grid_coords$Quad == 'Center')], 
+  #                  y = frc_grid_coords$Latitude_DD[which(frc_grid_coords$Block == 'C' & frc_grid_coords$Quad == 'Center')],
+  #          label = 'C') + # writes "C" in the correct block
+  geom_point(aes(x = lon, y = lat), alpha = .5, data = removal_coords[which(removal_coords$site == 'fort_ross'),],  size = 2.2) +
+  # scale_color_date(low = 'gold', high = 'red') + # color codes the points by date with earlier dates in gold and later dates in red
+  # scale_color_manual(values = colorRampPalette(c("gold", "red"))(15)) + # creates a gradient of discrete colors from yellow to red for the legend. #nah, discrete was too crazy bc it listed out all the dates individually
+  # scale_shape_manual(values = c(0,2)) + # changes the shapes of the points
+  ggtitle('Purple sea urchin removal locations at Fort Ross Cove in 2023') +
+  labs(x = 'Longitude', y = 'Latitude') +
+  ggspatial::annotation_north_arrow(location = "tr", style = ggspatial::north_arrow_minimal()) + #north arrow
+  annotation_scale(location = "bl", width_hint = 0.1) + # scale bar
+  coord_sf(crs = 4326) # assuming this is the crs.
+
+# to add another map on top, i.e., the inset of California showing where FRC is.
+# I learned this from here: https://upgo.lab.mcgill.ca/2019/12/13/making-beautiful-maps/
+# New plan. Make simple CA map with study area in a square and add that to the outside of the frc map. 
+
+california <- ggplot2::map_data("state", region = "california")
+
+ca_inset <- ggplot() +
+  geom_polygon(data = california, aes(x = long, y = lat, group = group), fill = "grey80", color = 'grey50') + 
+  coord_fixed(1.3) +
+  theme_void() +
+  geom_point(aes(x = Longitude_DD[1], y = Latitude_DD[1]), data = frc_grid_coords[which(frc_grid_coords$Quad == 'A3'),], size = 2.2, shape = 15, color = 'blue4') +
+  annotate('text', x = -121.9, y = 39.1, label = 'Study area', color = 'blue4', size = 2.6) +
+  geom_point(aes(x = -122.4506, y = 37.763)) +
+  annotate('text', x = -120.5, y = 37.763, label = 'San Francisco', size = 1.8) +
+  annotate('text', x = -119, y = 36, label = 'California', size = 2.5, angle = 315)
+
+(frc_map_inset <- ggdraw(frc_map) +
+  draw_plot(ca_inset, width = .23, height = .4, x = .74, y = .2 
+  ) # the inset looks bad in the viewer, but it works in the rendered pdf.
+)
+
+## save the map with specific dimensions
+tiff(filename = 'frc_map_inset_blackpts.tiff', units = 'in', width = 5.5, height = 4, res = 300)
+frc_map_inset
+dev.off()
+```
+
+```{r timber cove map}
+# Timber Cove
+## Create bounding box 
+tc_box = c(-123.280, 38.525, -123.265, 38.534) # lowerleftlon, lowerleftlat, uppergithlon, upperrightlat
+
+## Load raster tiles and Draw points on a map!!!
+tc_map <- ggmap(get_stadiamap(bbox = tc_box, zoom = 16)) + #higher zoom increases resolution
+  geom_point(aes(x = lon, y = lat), alpha = 0.5, data = removal_coords[which(removal_coords$site == 'timber'),],  size = 2.2) +
+  # scale_color_date(low = 'gold', high = 'red') +
+  ggtitle('Purple sea urchin removal locations at Timber Cove in 2023') +
+    labs(x = 'Longitude', y = 'Latitude') +
+  ggspatial::annotation_north_arrow(location = "tr", style = ggspatial::north_arrow_minimal()) + #north arrow
+  annotation_scale(location = "bl", width_hint = 0.1) + # scale bar
+  coord_sf(crs = 4326) + # assuming this is the crs.
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) # tilt the longitude labels
+
+# Add California inset
+(tc_map_inset <- ggdraw(tc_map) +
+  draw_plot(ca_inset, width = .23, height = .4, x = .25, y = .2
+  ) # technically the "study area" point is for FRC, so to be more accurate I could make a new inset map with exact TC coords.
+  # the inset looks bad in the viewer, but it works in the rendered pdf.
+)
+
+## save the map with specific dimensions
+tiff(filename = 'tc_map_inset_blkpts.tiff', units = 'in', width = 5.5, height = 4, res = 300)
+tc_map_inset
+dev.off()
+
+```
+
+```{r practice using packages sf and sp, include = FALSE}
+# from website https://thinking-spatial.org/courses/angewandte_geodatenverarbeitung/kurs03/
+library(spData)
+library(lwgeom)
+library(sf)
+
+# Plot of Earth countries
+plot(world)
+names(world)
+plot(world[9])
+plot(world[world$continent == 'Asia',][9]) # life expectancy among Asian countries
+canada <- world[world$name_long == 'Canada',]
+st_crs(canada) #crs = coordinate reference system. st_crs() retrieves the crs from an object. If we want to set/change the crs of an object, we can just assign it something else.
+st_crs(canada) <- NA
+st_crs(canada) <- 4326 #4326 is the crs. The European Petroleum Survey Group Geodesy (EPSG) is best known for its system of spatial reference IDs for coordinate systems. An EPSG code is a unique ID that can be a simple way to identify a CRS.
+## It looks like it was already set to 4326, but hey we did it again to demonstrate.
+
+# There's this other format for crs's called proj4. PROJ is a generic coordinate transformation software that transforms geospatial coordinates from one coordinate reference system (CRS) to another. The PROJ4 syntax consists of a list of parameters used in defining a coordinate system. The parameters are combined in a single string by the + character. 
+
+## To convert canada's crs using proj4 language, do:
+st_crs(canada) <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs" # proj = projection name, ellps = ellilpsoid name, datum = datum name, no_defs = ??
+st_crs(canada) #hm this looks like a different crs but I don't think it's supposed to be.
+
+## To transform canada to a new crs, EPSG:3347 NAD83 / Statistics Canada Lambert:
+canada_transform <- st_transform(canada, 3347) # make new object with the transformed crs
+st_crs(canada_transform)
+
+## Now compare the two identical datasets with different coordinate systems!!
+par(mfrow=c(1,2))
+plot(st_geometry(canada), main = 'EPSG: 4326')
+plot(st_geometry(canada_transform), main = 'EPSG: 3347')
+
+# Areas
+## st_area returns the area of a geometry in the crs used. This means we need to know the units of the crs. If it is in degrees lon/lat, st_geod_area is used for area calculatoin.
+st_area(st_geometry(canada)) # area of canada (epsg4326) is 9.9e12 m2.
+st_area(st_transform(st_geometry(canada), 2256)) # calculate area in square feet using NAD83 / Montana (ft)
+## the area can change depending on the crs, which honestly doesn't make sense to me but that's just how it is.
+## Convert units
+library(units)
+set_units(st_area(st_geometry(canada)), km^2) # 9984404 km2
+set_units(st_area(st_transform(st_geometry(canada), 2256)), km^2) # 10918834 km2
+
+# Reading and writing data
+## Use st_read() to get the file to read.
+
+## first download from Github
+download.file("https://raw.githubusercontent.com/RafHo/teaching/master/angewandte_geodatenverarbeitung/datasource/nc.zip", destfile = "nc.zip") # North Carolina county data
+## then unzip it
+unzip('nc.zip')
+## now read it
+nc_sf <- st_read('nc.shp') # I assume that is the shapefile.
+## To load a file from your hard drive, use st_read("YOUR/PATH/nc.shp")
+
+## In order to write a simple features object to a file, we need the sf object, the dsn, the name we want to give the object and the driver (e.g., shapefile, csv, etc.):
+# st_write(nc_sf, dsn = "C:/Users/Gina/Downloads/nc_sf_test.shp", driver= "ESRI Shapefile", delete_layer = TRUE)
+# delete layer overwrites
+
+# To use sf functions, we have to transform the data to sf objects, or the functions may not work right.
+# nc_sp_to_sf <- st_as_sf(nc_sp) #  This only applies to the rgdal packages, which is deprecated and no longer available for newer versions of R, so we will not be doing this.
+
+#### Tmap package ####
+# "Thematic map"
+# files available on Github: https://github.com/ # wow that's not helpful
+# another tmap resource: https://r-spatial.org/book/08-Plotting.html#sec-tmap
+library(tmap)
+tmap_tip() #gives you a tip!
+# Load data
+data(World) 
+str(World)
+glimpse(World)
+names(World)
+# Plot population estimate, check histogram, and summarize to get an overview of the data.
+plot(World$pop_est)
+hist(World$pop_est)
+
+## Plot simple maps of Happy Planet Index, life expectancy, 
+tm_shape(World) +
+  tm_polygons("HPI")
+tm_shape(World) +
+  tm_polygons("life_exp")
+
+# Interactive map.
+## Set the mode to "view". Static plots are "plot"
+tmap_mode('view')
+tm_shape(World) +
+  tm_polygons('HPI')
+
+# Plot multiple layers of info.
+data(World, metro, rivers, land) # load the data
+tmap_mode("plot") # make a static map, not interactive
+tm_shape(land) +
+  tm_raster("elevation", palette = terrain.colors(10)) +
+  tm_shape(World) +
+  tm_borders("white", lwd = .5)+
+  tm_text("iso_a3", size = "AREA")+
+  tm_shape(metro) + 
+  tm_symbols(col = "red", size = "pop2020", scale = .5) +
+  tm_legend(show = FALSE)
+
+# Faceting. Plotting multiple maps in the same view
+## maybe later.
+# Lots of options to chnage colors.
+# Exporting maps
+tm <- tm_shape(World) +
+  tm_polygons("HPI", legend.title = "Happy Planet Index")
+tmap_save(tm, filename = 'world_hpi.png')
+
+```
+
+This report was produced using RMarkdown in RStudio version 2023.09.1+494 "Desert Sunflower" and `r version$version.string`. Maps were produced using package "ggmap:" 
+D. Kahle and H. Wickham. ggmap: Spatial Visualization with ggplot2. The R Journal, 5(1), 144-161. URL
+http://journal.r-project.org/archive/2013-1/kahle-wickham.pdf.

@@ -1,0 +1,128 @@
+---
+title: "Map demo for RUG"
+subtitle: "By Gina Contolini. Gina.Contolini@noaa.gov"
+author: "Greater Farallones Association and Greater Farallones and Cordell Bank National Marine Sanctuaries"
+date: "Updated on `r Sys.Date()`"
+output: 
+  html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+library(tidyverse)
+library(tmap)
+library(leaflet)
+library(ggmap)
+library(ggspatial)
+```
+
+# Tmap package
+Thematic maps are geographical maps in which spatial data distributions are visualized. This package offers a flexible, layer-based, and easy-to-use approach to create thematic maps, such as choropleths and bubble maps.
+The following example is based on a demo from [thinking-spatial.org](https://thinking-spatial.org/courses/angewandte_geodatenverarbeitung/kurs04/).  
+```{r tmap quick demo}
+# the following code is based on this online demo: thinking-spatial.org/courses/angewandte_geodatenverarbeitung/kurs04 
+# load dataset
+data(World) 
+# look at data
+# glimpse(World)
+
+# make a static map with that data
+tm_shape(World) +
+  tm_polygons("HPI")
+
+# make an interactive map with that data
+tmap_mode('view') # change the mode to interactive view
+tm_shape(World) +
+  tm_polygons('HPI')
+# cool beans
+```
+
+# Leaflet package
+Create and customize interactive maps using the "Leaflet" JavaScript library and the "htmlwidgets" package. These maps may be used directly from the R console, from RStudio, in Shiny applications, and R Markdown documents.
+The following examples are based on a demo from [jla-data.net](https://www.jla-data.net/eng/leaflet-in-r-tips-and-tricks/).
+
+```{r leaflet quick demo}
+# the following code is based on this online demo: https://www.jla-data.net/eng/leaflet-in-r-tips-and-tricks/ 
+
+# set up a data frame of points
+df <- data.frame(name = c("Kramářova vila", "Pražský hrad", "Strakova akademie", "Nejvyšší soud", "Ústavní soud", "Sněmovna", "Senát"),
+          branch = c("executive", "executive", "executive", "judiciary", "judiciary", "legislature", "legislature"),
+          lat = c(14.4104392, 14.3990089, 14.4117831, 16.6021958, 16.6044039, 14.4039458, 14.4053489),
+          lon = c(50.0933681, 50.0895897, 50.0920997, 49.2051925, 49.1977642, 50.0891494, 50.0900269)) %>% 
+  sf::st_as_sf(coords = c("lat", "lon"), crs = 4326) # transform the data frame from plain vanilla one to spatial. # WGS84 is a sensible default
+
+# prepare leaflet plot
+leaflet(data = df) %>% # creates leaflet object
+  addTiles() %>% # adds basemap
+  addMarkers() # adds data layers, in this case markers
+
+# This makes a cool map you can zoom into. Here's a new example with kelp team data.
+
+# load urchin removal points
+  urchin_removals <- read.csv('Purple urchin landings datasheet - removal_coords.csv') # read.csv might be different than read_csv?
+
+# show all markers
+leaflet(data = urchin_removals) %>%
+  addProviderTiles('CartoDB.Positron') %>%
+  addMarkers() 
+
+# Code markers by vessel, and add date on hover (I actually don't know why it's adding the date, but it's cool!)
+# create aesthetic with vessel colors
+vessel_colors <- leaflet::colorFactor(palette = c('Guardian' = 'red',
+                                  'Omega' = 'goldenrod', 
+                                  'Janae' = 'steelblue'), 
+                      domain = urchin_removals$vessel)
+# create the map
+leaflet(data = urchin_removals) %>%
+  addProviderTiles('CartoDB.Positron') %>%
+  addCircleMarkers(radius = 5, popup = ~date, color = vessel_colors(urchin_removals$vessel), fillOpacity = 0.7, stroke = FALSE) %>%
+  leaflet::addLegend(position = "topright",
+            values = ~vessel, # data frame column for legend
+            opacity = .7, # alpha of the legend
+            pal = vessel_colors, # palette made earlier
+            title = "Vessel") # legend title
+
+# Cluster markers
+leaflet(data = urchin_removals) %>%
+  addProviderTiles('CartoDB.Positron') %>%
+  addCircleMarkers(radius = 10, popup = ~date, color = vessel_colors(urchin_removals$vessel), stroke = FALSE, clusterOptions = markerClusterOptions())
+```
+
+# SF package
+Support for simple features, a standardized way to encode spatial vector data. Binds to "GDAL" for reading and writing data, to "GEOS" for geometrical operations, and to "PROJ" for projection conversions and datum transformations. Uses by default the "s2" package for spherical geometry operations on ellipsoidal (lon/lat) coordinates.
+I have no example using SF because it wasn't compatible with my version of R, but I can help you find an online demo if you're interested.
+
+# ggmap package
+A collection of functions to visualize spatial data and models on top of static maps from various online sources (e.g., Google Maps and Stamen Maps). It includes tools common to those tasks, including functions for geolocation and routing. The following example is based on a demo from [thinking-spatial.org](https://thinking-spatial.org/courses/angewandte_geodatenverarbeitung/kurs05/).  
+
+```{r ggmap demo with kelp data}
+# The following code is based on a demo from https://thinking-spatial.org/courses/angewandte_geodatenverarbeitung/kurs05/
+# load coordinates you want to plot
+removal_coords <- read_csv('Purple urchin landings datasheet - removal_coords.csv')
+# make date a date class so it plots continuous not categorical
+removal_coords$date = dmy(removal_coords$date)
+
+# must get API key first for some reason. Do the following once per R session:
+ggmap::register_stadiamaps('8d134a7f-55f5-4eac-a02c-eecd8c3d4784') #here's where I got that API key: https://client.stadiamaps.com/dashboard/#/property/19840/. Eventually it will probably expire and I'll have to get a new API key.
+
+## North arrow and scale bar features demonstrated here: https://stackoverflow.com/questions/77437044/add-scalebar-and-north-arrow-in-a-ggmap-without-using-ggsn
+
+# load coordinates to plot
+#### Create the map! ####
+frc_box = c(-123.252, 38.508, -123.24, 38.515) # This is the bounding box. c(lowerleftlon, lowerleftlat, upperrigthlon, upperrightlat)
+
+ggmap(get_stadiamap(bbox = frc_box, zoom = 16)) + #higher zoom increases resolution
+  geom_point(aes(x = lon, y = lat), alpha = .5, data = removal_coords,  size = 2.2) +
+  ggtitle('Purple sea urchin removal locations at Fort Ross Cove in 2023') +
+  labs(x = 'Longitude', y = 'Latitude') +
+  ggspatial::annotation_north_arrow(location = "tr", style = ggspatial::north_arrow_minimal()) + #north arrow
+  annotation_scale(location = "bl", width_hint = 0.1) + # scale bar
+  coord_sf(crs = 4326) # assuming this is the crs.
+
+```

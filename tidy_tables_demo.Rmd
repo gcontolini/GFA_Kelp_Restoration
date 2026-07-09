@@ -1,0 +1,105 @@
+---
+title: "Tidy tables demo"
+author: "by Gina Contolini, GFA-GFNMS/CBNMS"
+date: "Updated `r format(Sys.Date(), '%d %b %Y')`"
+output: word_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(tidyverse) # tidy code packages
+library(flextable) # table making package
+library(broom) # formats model outputs as tidy tables
+
+# Create and load data
+den_tibble <- tibble(site = c('Fort Ross','Timber','Ocean','Stillwater'), urchin_den_m2 = c(30.284, 20.954, 11.125, 12.017)) # very simple tibble with made up numbers
+landings <- read_csv('Purple urchin landings datasheet - load_to_r.csv') # complex, real data
+dockside <- read_csv('Dockside Urchin Monitoring datasheet_GFA2023 - urchin_entry.csv') # real data for model example
+
+```
+
+## Package `flextable`
+This is my recommendation for ONMS reports because it can render as a fully formatted, writable table in a Word document.
+
+Table 1. Summary of urchin densities in 2023.
+```{r first flextable example with small tibble}
+# Demonstration here: https://ardata-fr.github.io/flextable-book/
+
+# First, set formatting for all the tables you are going to make. You can also change individual tables, but if you like to keep your formatting consistent, this is faster and easier. I set these formats according to the NOAA conservation science series guidelines (https://sanctuaries.noaa.gov/science/conservation/preparation.html)
+
+set_flextable_defaults(
+  digits = 2, # this didn't actually work, so I did it again below
+  font.size = 10, 
+  font.family = "Arial", # changes the font for all further tables 
+  font.color = "black",
+  table.layout = "autofit", # automatically adjusts table width
+  border.color = "black")
+# I can't figure out how to make header alignment center by default.
+# options(digits = 4) # changes how numbers are displayed in base R, but this is inconvenient because it includes all the digits, ignoring the decimal place.
+
+# Now view the table, and the above formatting will apply.
+
+flextable(den_tibble) |>
+  labelizor(part = "header", labels = c("site" = "Cove")) |> #change col name. Unfortunately, the syntax for new_name = old_name is reversed from package dplyr. So here it is old_name = new_name
+ compose(i = 1, j = "urchin_den_m2", part = "header",
+  value = as_paragraph("Urchin density (# m", as_sup("–2"),")")) |> # Change the other column name, including superscript format for the density unit
+  colformat_double(digits = 2) # I couldn't figure out how to get the default digits to work, so I just did it again here and it worked.
+```
+
+## 
+
+Table 2. Summary of urchin landings in 2023.
+```{r flextable example with large tibble}
+# Landings data
+landings %>% 
+  select(site, date, vessel, diver_names, lbs_urchins, tot_bottom_hrs,  tot_payment) %>% #select just certain columns
+  rename(Vessel = vessel, `Diver name` = diver_names) %>% # rename columns
+  mutate(lbs_urchins = as.numeric(lbs_urchins), tot_bottom_hrs = as.numeric(tot_bottom_hrs), tot_payment = parse_number(tot_payment)) %>% # make sure these values are numeric so can perform math on them
+  group_by(Vessel, `Diver name`) %>% # group by diver name to perform summary functions
+  summarize(Days = length(unique(date))
+            , Divetime_Mean = mean(tot_bottom_hrs, na.rm = T)
+            , Divetime_SD = sd(tot_bottom_hrs, na.rm = T)
+            , Landings_Mean = mean(lbs_urchins, na.rm = T)
+            , Landings_SD = sd(lbs_urchins, na.rm = T)
+            , `Total earnings` = sum(tot_payment, na.rm = T)) %>% # calculate totals per diver per day # na.rm = T means to remove the NA values
+  flextable() %>%
+  separate_header() %>% # Adds a grouping header for mean and sd columns
+  colformat_double(digits = 2) %>% # control decimal places in all numeric columns
+  colformat_double(j = "Total earnings", prefix = "$", digits = 2) %>% # add currency formatting to earnings column
+   compose(i = 1, j = 4, part = "header", value = as_paragraph("Dive time (hrs)")) %>% # Change header name. Too bad I can't use the actual word; I had to index it (1,4).
+   compose(i = 1, j = 6, part = "header", value = as_paragraph("Landings (lbs)")) %>% # Change header name.
+  merge_v(j = ~ Vessel) |> # merges rows with identical values
+  valign(valign = "top") |> # sets vertical alignment to top
+  align(part = 'header', align = 'center') # this is important for the ONMS formatting.
+```
+
+## Package `broom`
+This package formats model outputs into presentable tables. Use in conjunction with flextable.
+
+##
+
+Table 3. Summary of linear model of square root urchin weight.
+```{r broom package example}
+# model some data
+purple_urchins <- dockside %>% 
+  filter(species == 'purple')
+
+# create summary table
+summary(lm(sqrt(wet_weight_g) ~ diameter_mm, data = purple_urchins)) |> # this is the model summary
+  tidy() |> # This makes the model summary into a data frame. It is from the broom package.
+  mutate(term = c('Intercept', 'Diameter (mm)')) |> # rename variables so they look nicer in a table.
+  flextable() |> # this makes the data frame into a presentable, formatted table
+  colformat_double(digits = 3) |> # limits numeric digits
+  labelizor(part = "header", labels = c("term" = "Term", "estimate" = "Estimate", "std.error" = "Standard error", "statistic" = "Statistic", "p.value"= "P-value")) |> #change col names
+  bold(part = 'header')
+
+# visualize the data
+ggplot(purple_urchins, aes(x = diameter_mm, y = sqrt(wet_weight_g))) +
+  geom_smooth(method = lm, color = 'grey40') +
+  geom_point() +
+  theme_classic() 
+```
+
+For more information and a demos about the flextable package, check out this flextable tutorial: [Using the flextable R package](https://ardata-fr.github.io/flextable-book)

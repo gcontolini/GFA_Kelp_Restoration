@@ -1,0 +1,86 @@
+---
+title: "FebRUG"
+author: "Gina Contolini"
+date: "`r Sys.Date()`"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+
+# Load swath data
+swath <- read_csv('GFNMS Swath and KELPUR data entry (all years) - load_to_R.csv') %>% 
+  dplyr::mutate(heading = as.character(heading)) # for joins later
+
+# load targeted monitoring data
+target <- read_csv('URCHIN_survey_data - URCHIN_tot_counts+sizes.csv') %>% 
+  dplyr::mutate(survey_type = 'URCHIN')
+
+# combine them
+swath_target <- full_join(swath, target) 
+```
+
+```{r count number of each survey type}
+# what are the different survey types?
+unique(swath_target$survey_type)
+
+swath_target %>% 
+  dplyr::group_by(survey_type) %>% 
+  dplyr::summarise(nobservations = n()) 
+
+# use count() function
+swath_target %>% 
+  dplyr::count(survey_type) # this shows the number of rows per transect type. Not what we want.
+
+# group by distinguishing ID columns, then survey type.
+swath_target %>% 
+  dplyr::count(year, month, day, site, subsite, observer, region, zone, block, quad, transect, transect_m, transect_no, heading, survey_type) %>%  
+  dplyr::count(survey_type) # this shows how many different transects of each survey type were done. This is what we wanted. (There should be 166 total.)
+
+# This counts the total number of transects to check if it is 166.
+swath_target %>% 
+  dplyr::count(year, month, day, site, subsite, observer, region, zone, block, quad, transect, transect_m, transect_no, heading, survey_type) %>%  
+  dplyr::count(survey_type) %>% 
+  dplyr::summarise(ntotal = sum(n)) # yes it is 166.
+
+```
+
+```{r group_indices}
+# I don't want to type year, month, day, site, subsite, etc. each time I want to summarize something about individual transects. 
+
+# Create a new grouping ID.
+swath_target$ID <- swath_target %>% 
+  dplyr::group_by(year, month, day, site, subsite, observer, region, zone, block, quad, transect, transect_m, transect_no, heading, survey_type) %>%  
+  group_indices()
+
+# Now it's easier to group by transect because there's only one column unique to each transect.
+swath_target %>% 
+  dplyr::count(ID, survey_type) %>% 
+  dplyr::count(survey_type)
+
+```
+
+```{r uncount}
+# a function to expand the number of rows based on a given variable
+
+# aiming for a table where each row is an urchin size.
+# classcode     ID      size_cm
+
+# we only want purple urchins
+swath_target %>% 
+  filter(classcode == 'STRPUR') %>% 
+  select(ID, classcode, `1_cm_count`:`31_cm_count`) %>% 
+  pivot_longer(`1_cm_count`:`31_cm_count`, names_to = 'size', values_to = 'count') %>% 
+  filter(!is.na(count)) %>% # need to remove NA values for count
+  uncount(count) %>% 
+  mutate(size = as.numeric(gsub('_cm_count', '', size))) %>% # remove "_cm_count" from the values in size and make numeric
+
+# now ready for histogram
+
+ggplot(aes(x = size)) +
+  geom_histogram()
+  
+```
