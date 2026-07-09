@@ -1959,7 +1959,7 @@ swath_matrix_counts0_decostand <- decostand(swath_matrix_counts0, method = 'tota
 set.seed(19900118) # set seed to make sure the metaMDS repeats a best solution.
 MDS1_decostand <- metaMDS(swath_matrix_counts0_decostand, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.07.
 
-## reformat so it can be plotted in ggplot with groupings
+## reformat so it can be plotted in ggplot with groupings.
 data_scores <- as.data.frame(scores(MDS1_decostand)$sites)
 
 ## Add back identifier columns

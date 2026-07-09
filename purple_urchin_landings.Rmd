@@ -661,14 +661,24 @@ landings_sage <- full_join(landings_gfa, multidays) %>%
   mutate(trip_days = replace_na(trip_days, 1)) %>% 
   mutate(lbs_daily = lbs_urchins / trip_days) # split up lbs_urchins over days with the same landing_date.
 
-# everywhere it says a landing_date and a name, put the non NA lbs_daily.
-landings_nona <- landings_sage %>% 
-  select(site, landing_date, diver_name, lbs_daily) %>% 
-  filter(!is.na(lbs_daily)) 
+# join the lbs_daily col to the multidays tibble, but without the NAs. 
 
-right_join(landings_nona, landings_sage %>% select(site, collection_date, landing_date, diver_name, vessel, lbs_urchins, trip_days, lat, lon))
+multidays2 <- right_join(multidays, landings_sage %>%  # 90 rows
+             filter(!is.na(lbs_daily)) %>% 
+             filter(trip_days > 1) %>% 
+             select(site, collection_date, landing_date, diver_name, vessel, trip_days, lbs_daily, lat, lon))
 
-#test comment 
+# Now I have a tibble that shows the correct lbs_daily for the n+1th day of each multiday trip. 
+# I still need to show all the days of every trip, including single day trips. 
+# OK I think I can remove NAs from lbs_daily in landings_sage, then rowbind this new multidays2 tibble.
+
+landings_sage2 <- landings_sage %>% 
+  select(!lbs_urchins) %>% 
+  filter(!is.na(lbs_daily)) %>% 
+  bind_rows(multidays2)
+
+# in conclusion today, I can't do this in R because I need to read each line and check where the diver removed urchins and spread it out among the two sites. This may require an additional spreadsheet, or at least an updated spreadsheet because if they removed over multiple days we actually need the lbs removed to be reflected on each day. 
+
 
 ```
 
