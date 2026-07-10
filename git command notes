@@ -1,0 +1,8 @@
+fork someone else's repo so you can make changes and then push them back to that person's repo.
+This way, you can commit and push changes locally to a remote copy of the forked repo, and then ask to push them back to that person's repo in a "pull request."
+
+You can do this With usethis: usethis::create_from_github("OWNER/REPO", fork = TRUE)
+
+Apparently this is not possible within git or RStudio (except as shown above?).
+Source: https://happygitwithr.com/common-remote-setups
+More detailed instructions: https://happygitwithr.com/fork-and-clone#fork-and-clone
