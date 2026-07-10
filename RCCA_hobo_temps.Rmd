@@ -40,6 +40,7 @@ theme_set(theme(
 
 # remove dates beyond deployments. 
 
+## Stillwater Cove
 rcca_2017 <- read_csv("SWS_2017_09_Hobo.csv") %>% # has over 50,000 observations
   mutate(datetime = mdy_hm(`Date Time, GMT-07:00`, tz = 'America/Los_Angeles')) %>% # 8 failed to parse
   filter(datetime > ymd_hm('2017-09-17 16:00', tz = 'America/Los_Angeles') & datetime < ymd_hm('2017-08-02 12:25', tz = 'America/Los_Angeles'))
@@ -81,9 +82,11 @@ head(rcca_hobo[which(rcca_hobo$year == 2020),]) # starts at 0900 on aug 26. that
 ```
 
 ```{r plot raw data to check it for outliers, include = FALSE}
-ggplot(rcca_hobo, aes(x = datetime, y = temp_C)) +
-  geom_point(color = 'coral') +
-  scale_x_datetime(breaks = '6 months')
+# this takes a long time since there are millions of data points, so I commented it out until I need to see it again.
+
+# ggplot(rcca_hobo, aes(x = datetime, y = temp_C)) +
+#   geom_point(color = 'coral') +
+#   scale_x_datetime(breaks = '6 months')
 
 ```
 
