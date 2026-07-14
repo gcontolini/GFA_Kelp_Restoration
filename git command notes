@@ -1,6 +1,8 @@
 ## Start the workflow in git ##
-# Pull from remote. 
+# Clone from remote. 
 git remote add origin https://github.com/gcontolini/GFA_Kelp_Restoration.git
+# pull from remote
+git pull
 # open the directory locally
 cd ~/Desktop/GFA_Kelp_Restoration
 # see what files are being tracked
