@@ -11,8 +11,10 @@ git add filename.Rmd
 # commit what you just added
 git commit -m "message"
 # amend a commit since you're not done with the thing you're working on yet
+git add filename.Rmd
 git commit --amend --no-edit
 # make the final commit after you finished amending a bunch of times
+git add filename.Rmd
 git commit --amend -m "Implement awesome feature; closes #43"
 # push (to local? to remote? IDK)
 git push
