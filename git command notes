@@ -1,3 +1,16 @@
+# Start the workflow in git
+# Pull from remote. 
+git clone https://github.com/jennybc/happy-git-with-r.git
+$ cd ~/Desktop/GFA_Kelp_Restoration
+# see what files are being tracked
+$ git -ls 
+# you should see all your files.
+# do some work, then add something you worked on
+git add filename.Rmd
+# commit what you just added
+git commit -m "message"
+
+
 fork someone else's repo so you can make changes and then push them back to that person's repo.
 This way, you can commit and push changes locally to a remote copy of the forked repo, and then ask to push them back to that person's repo in a "pull request."
 
