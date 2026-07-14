@@ -90,7 +90,7 @@ head(rcca_swc_hobo[which(rcca_swc_hobo$year == 2020),]) # starts at 10:15 on Oct
 #   scale_x_datetime(breaks = '6 months')
 ```
 
-```{r plot temps}
+```{r swc plot temps}
 rcca_swc_hobo_mean_daily <- rcca_swc_hobo %>% 
   group_by(year, month, day) %>% 
   summarise(mean_daily_temp = mean(temp_C, na.rm = T), sd_daily_temp = sd(temp_C), min_daily_temp = min(temp_C), max_daily_temp = max(temp_C), n = n()) %>% 
@@ -151,7 +151,7 @@ glimpse(rcca_frc_hobo)
 
 ```
 
-```{r plot temps}
+```{r frc plot temps}
 rcca_frc_hobo_mean_daily <- rcca_frc_hobo %>% 
   group_by(year, month, day) %>% 
   summarise(mean_daily_temp = mean(temp_C, na.rm = T), sd_daily_temp = sd(temp_C), min_daily_temp = min(temp_C), max_daily_temp = max(temp_C), n = n()) %>% 
@@ -177,4 +177,126 @@ rcca_frc_hobo %>%
   geom_point() +
   geom_line() +
   ggtitle('Fort Ross Cove Monthly Mean Temps')
+```
+
+# Ocean Cove
+```{r Ocean Cove load and format data, include = FALSE}
+
+# remove dates beyond deployments. 
+rcca_oc_2019 <- read_csv("FTR_2019_08_Hobo.csv") %>% #52,000 observations
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
+  filter(datetime > ymd_hm('2019-08-02 11:25', tz = 'America/Los_Angeles') & datetime < ymd_hm('2020-10-09 12:52', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 20400694, SEN S/N: 20400694)`)
+
+rcca_oc_2020 <- read_csv("FTR_2020_10_Hobo.csv") %>% #31,000 observation
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
+  filter(datetime > ymd_hm('2020-10-09 12:52', tz = 'America/Los_Angeles') & datetime < ymd_hm('2021-08-28 10:29', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 20919267, SEN S/N: 20919267)`)
+
+rcca_oc_2021 <- read_csv("FTR_2021_08_Hobo.csv") %>% 
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
+  filter(datetime > ymd_hm('2021-08-28 10:29', tz = 'America/Los_Angeles') & datetime < ymd_hm('2022-09-10 10:42', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 20400460, SEN S/N: 20400460)`)
+
+rcca_oc_2022 <- read_csv("FTR_2022_09_Hobo.csv") %>% 
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
+  filter(datetime > ymd_hm('2022-09-10 10:42', tz = 'America/Los_Angeles') & datetime < ymd_hm('2023-09-23 10:15', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 20338175, SEN S/N: 20338175)`)
+  
+rcca_oc_hobo <- bind_rows(rcca_frc_2019, rcca_frc_2020, rcca_frc_2021, rcca_frc_2022) %>% 
+  mutate(year = year(datetime)) %>% 
+  mutate(month = month(datetime)) %>% 
+  mutate(day = day(datetime))
+
+glimpse(rcca_oc_hobo)
+
+```
+
+```{r oc plot temps}
+rcca_oc_hobo_mean_daily <- rcca_oc_hobo %>% 
+  group_by(year, month, day) %>% 
+  summarise(mean_daily_temp = mean(temp_C, na.rm = T), sd_daily_temp = sd(temp_C), min_daily_temp = min(temp_C), max_daily_temp = max(temp_C), n = n()) %>% 
+  mutate(date = ymd(paste(year, month, day, sep = '-')))
+
+ggplot(rcca_oc_hobo_mean_daily, aes(x = date, y = mean_daily_temp)) +
+  geom_errorbar(aes(ymin = mean_daily_temp - sd_daily_temp, ymax = mean_daily_temp + sd_daily_temp, width = 0), color = 'grey50') +
+  geom_point() +
+  scale_x_datetime(breaks = '4 months') +
+  scale_y_continuous(limits = c(7.7, 17), breaks = seq(8, 17, 1)) +
+  ggtitle("Ocean Cove")
+
+# monthly monthly means
+rcca_oc_hobo %>% 
+  ungroup() %>% 
+  group_by(year, month) %>% 
+  mutate(year = factor(year, levels = 2018:2024)) %>% 
+  summarise(mean_temp = mean(temp_C), sd = sd(temp_C)) %>% 
+  mutate(date = ymd(paste(year, month, 1))) %>% 
+  ggplot(aes(x = date, y = mean_temp)) +
+  geom_errorbar(aes(ymin = mean_temp - sd, ymax = mean_temp + sd, width = 0), color = 'grey60') +
+  scale_x_date(breaks = '3 months') +
+  geom_point() +
+  geom_line() +
+  ggtitle('Ocean Cove Monthly Mean Temps')
+```
+
+# Gerstle Cove
+```{r Gerstle Cove load and format data, include = FALSE}
+
+# remove dates beyond deployments. 
+rcca_gc_2019 <- read_csv("FTR_2019_08_Hobo.csv") %>% #52,000 observations
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
+  filter(datetime > ymd_hm('2019-08-02 11:25', tz = 'America/Los_Angeles') & datetime < ymd_hm('2020-10-09 12:52', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 20400694, SEN S/N: 20400694)`)
+
+rcca_gc_2020 <- read_csv("FTR_2020_10_Hobo.csv") %>% #31,000 observation
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
+  filter(datetime > ymd_hm('2020-10-09 12:52', tz = 'America/Los_Angeles') & datetime < ymd_hm('2021-08-28 10:29', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 20919267, SEN S/N: 20919267)`)
+
+rcca_gc_2021 <- read_csv("FTR_2021_08_Hobo.csv") %>% 
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
+  filter(datetime > ymd_hm('2021-08-28 10:29', tz = 'America/Los_Angeles') & datetime < ymd_hm('2022-09-10 10:42', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 20400460, SEN S/N: 20400460)`)
+
+rcca_gc_2022 <- read_csv("FTR_2022_09_Hobo.csv") %>% 
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
+  filter(datetime > ymd_hm('2022-09-10 10:42', tz = 'America/Los_Angeles') & datetime < ymd_hm('2023-09-23 10:15', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 20338175, SEN S/N: 20338175)`)
+  
+rcca_gc_hobo <- bind_rows(rcca_frc_2019, rcca_frc_2020, rcca_frc_2021, rcca_frc_2022) %>% 
+  mutate(year = year(datetime)) %>% 
+  mutate(month = month(datetime)) %>% 
+  mutate(day = day(datetime))
+
+glimpse(rcca_gc_hobo)
+
+```
+
+```{r gc plot temps}
+rcca_gc_hobo_mean_daily <- rcca_gc_hobo %>% 
+  group_by(year, month, day) %>% 
+  summarise(mean_daily_temp = mean(temp_C, na.rm = T), sd_daily_temp = sd(temp_C), min_daily_temp = min(temp_C), max_daily_temp = max(temp_C), n = n()) %>% 
+  mutate(date = ymd(paste(year, month, day, sep = '-')))
+
+ggplot(rcca_gc_hobo_mean_daily, aes(x = date, y = mean_daily_temp)) +
+  geom_errorbar(aes(ymin = mean_daily_temp - sd_daily_temp, ymax = mean_daily_temp + sd_daily_temp, width = 0), color = 'grey50') +
+  geom_point() +
+  scale_x_datetime(breaks = '4 months') +
+  scale_y_continuous(limits = c(7.7, 17), breaks = seq(8, 17, 1)) +
+  ggtitle("Ocean Cove")
+
+# monthly monthly means
+rcca_gc_hobo %>% 
+  ungroup() %>% 
+  group_by(year, month) %>% 
+  mutate(year = factor(year, levels = 2018:2024)) %>% 
+  summarise(mean_temp = mean(temp_C), sd = sd(temp_C)) %>% 
+  mutate(date = ymd(paste(year, month, 1))) %>% 
+  ggplot(aes(x = date, y = mean_temp)) +
+  geom_errorbar(aes(ymin = mean_temp - sd, ymax = mean_temp + sd, width = 0), color = 'grey60') +
+  scale_x_date(breaks = '3 months') +
+  geom_point() +
+  geom_line() +
+  ggtitle('Gerstle Cove Monthly Mean Temps')
 ```
