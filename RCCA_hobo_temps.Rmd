@@ -87,7 +87,6 @@ head(rcca_swc_hobo[which(rcca_swc_hobo$year == 2020),]) # starts at 10:15 on Oct
 # ggplot(rcca_hobo, aes(x = datetime, y = temp_C)) +
 #   geom_point(color = 'coral') +
 #   scale_x_datetime(breaks = '6 months')
-
 ```
 
 ```{r plot daily means}
