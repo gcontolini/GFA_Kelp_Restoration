@@ -4,7 +4,7 @@ git remote add origin https://github.com/gcontolini/GFA_Kelp_Restoration.git
 # open the directory locally
 cd ~/Desktop/GFA_Kelp_Restoration
 # see what files are being tracked
-$ git -ls 
+$ git ls-files 
 # you should see all your files.
 # do some work, then add something you worked on
 git add filename.Rmd
