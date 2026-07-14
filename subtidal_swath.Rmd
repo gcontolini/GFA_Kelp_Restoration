@@ -17,7 +17,7 @@ library(tidyverse)
 library(flextable)
 # library(bookdown)
 library(scales) # to get commas in the axis labels
-library(RColorBrewer)
+library(RColorBrewer) 
 library(car)
 library(vegan) # for rarefaction
 library(googlesheets4) # to read in a spreadsheet directly from Google Drive
