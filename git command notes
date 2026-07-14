@@ -4,8 +4,10 @@ git remote add origin https://github.com/gcontolini/GFA_Kelp_Restoration.git
 # open the directory locally
 cd ~/Desktop/GFA_Kelp_Restoration
 # see what files are being tracked
-$ git ls-files 
+git ls-files 
 # you should see all your files.
+git status 
+# shows if you are working on a branch or if you're up to date with main.
 # do some work, then add something you worked on
 git add filename.Rmd
 # commit what you just added
