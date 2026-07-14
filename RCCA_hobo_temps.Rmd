@@ -111,43 +111,41 @@ rcca_hobo_mean_daily %>%
 
 # remove dates beyond deployments. 
 
-rcca_2017 <- read_csv("SWS_2017_09_Hobo.csv") %>% # has over 50,000 observations
+rcca_frc_2017 <- read_csv("SWS_2017_09_Hobo.csv") %>% # has over 50,000 observations
   mutate(datetime = mdy_hm(`Date Time, GMT-07:00`, tz = 'America/Los_Angeles')) %>% # 8 failed to parse
   filter(datetime > ymd_hm('2017-09-17 16:00', tz = 'America/Los_Angeles') & datetime < ymd_hm('2017-08-02 12:25', tz = 'America/Los_Angeles'))
 
-rcca_2018_1 <- read_csv("SWS_2018_04_Hobo.csv") %>% # has only about 5,000 observations
+rcca_frc_2018_1 <- read_csv("SWS_2018_04_Hobo.csv") %>% # has only about 5,000 observations
   mutate(datetime = mdy_hm(`Date Time, GMT-07:00`, tz = 'America/Los_Angeles')) %>% 
   filter(datetime > ymd_hm('2018-04-18 15:02', tz = 'America/Los_Angeles') & datetime < ymd_hm('2018-09-14 16:55', tz = 'America/Los_Angeles'))
 
-rcca_2018_2 <- read_csv("SWS_2018_09_Hobo.csv") %>% # note 2019 data was lost
+rcca_frc_2018_2 <- read_csv("SWS_2018_09_Hobo.csv") %>% # note 2019 data was lost
   mutate(datetime = mdy_hm(`Date Time, GMT-07:00`, tz = 'America/Los_Angeles')) %>% # 6 failed to parse
   filter(datetime > ymd_hm('2018-09-14 16:55', tz = 'America/Los_Angeles') & datetime < ymd_hm('2019-08-02 12:25', tz = 'America/Los_Angeles'))
 
-rcca_2020 <- read_csv("SWS_2020_10_Hobo.csv") %>% 
+rcca_frc_2020 <- read_csv("SWS_2020_10_Hobo.csv") %>% 
   mutate(datetime = mdy_hm(`Date Time, GMT+00:00`, tz = 'UTC')) %>% 
   filter(datetime > ymd_hm('2020-10-09 10:12', tz = 'America/Los_Angeles') & datetime < ymd_hm('2021-08-14 10:30', tz = 'America/Los_Angeles'))
 
-rcca_2021 <- read_csv("SWS_2021_08_Hobo.csv") %>% 
+rcca_frc_2021 <- read_csv("SWS_2021_08_Hobo.csv") %>% 
   mutate(datetime = mdy_hm(`Date Time, GMT+00:00`, tz = 'UTC')) %>% 
   filter(datetime > ymd_hm('2021-08-14 10:30', tz = 'America/Los_Angeles') & datetime < ymd_hm('2022-08-21 10:00', tz = 'America/Los_Angeles'))
 
-rcca_2022 <- read_csv("SWS_2022_08_Hobo.csv") %>% 
+rcca_frc_2022 <- read_csv("SWS_2022_08_Hobo.csv") %>% 
   mutate(datetime = mdy_hm(`Date Time, GMT+00:00`, tz = 'UTC')) %>% 
   filter(datetime > ymd_hm('2022-08-21 11:30', tz = 'America/Los_Angeles') & datetime < ymd_hm('2023-08-19 10:38', tz = 'America/Los_Angeles'))
 
-rcca_2023 <-  read_csv("SWS_2023_08_Hobo.csv") %>% 
+rcca_frc_2023 <-  read_csv("SWS_2023_08_Hobo.csv") %>% 
   mutate(datetime = mdy_hm(`Date Time, GMT+00:00`, tz = 'UTC')) %>% 
   filter(datetime > ymd_hm('2023-08-19 10:38', tz = 'America/Los_Angeles') & datetime < ymd_hm('2024-09-22 11:30', tz = 'America/Los_Angeles'))
 
-rcca_hobo <- bind_rows(rcca_2017, rcca_2018_1, rcca_2018_2, rcca_2020, rcca_2021, rcca_2022, rcca_2023) %>% 
+rcca_frc_hobo <- bind_rows(rcca_frc_2018) %>% 
   mutate(year = year(datetime)) %>% 
   mutate(month = month(datetime)) %>% 
   mutate(day = day(datetime))
 
-glimpse(rcca_hobo)
-tz(rcca_hobo$datetime) # it says the timezone is LA. So did it automatically change the GMT time from the 2020 data? Check the first 6 rows of the original 2020 data and compare to the first six rows of the combined data from 2020.
-head(rcca_2020) # starts at 1600 on aug 26.
-head(rcca_hobo[which(rcca_hobo$year == 2020),]) # starts at 0900 on aug 26. that's 7 hours behind. ok coooooool it seems like it automatically changes the times to the same timezone with the rowbind!!
+glimpse(rcca_frc_hobo)
+
 
 ```
 
