@@ -111,17 +111,17 @@ rcca_hobo_mean_daily %>%
 
 # remove dates beyond deployments. 
 
-rcca_frc_2017 <- read_csv("SWS_2017_09_Hobo.csv") %>% # has over 50,000 observations
-  mutate(datetime = mdy_hm(`Date Time, GMT-07:00`, tz = 'America/Los_Angeles')) %>% # 8 failed to parse
-  filter(datetime > ymd_hm('2017-09-17 16:00', tz = 'America/Los_Angeles') & datetime < ymd_hm('2017-08-02 12:25', tz = 'America/Los_Angeles'))
+rcca_frc_2019 <- read_csv("FTR_2019_08_Hobo.csv") %>% #52,000 observations
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`))
+  filter(datetime > ymd_hm('2019-08-02 11:25') & datetime < ymd_hm('2020-10-09 12:52'))
 
-rcca_frc_2018_1 <- read_csv("SWS_2018_04_Hobo.csv") %>% # has only about 5,000 observations
-  mutate(datetime = mdy_hm(`Date Time, GMT-07:00`, tz = 'America/Los_Angeles')) %>% 
-  filter(datetime > ymd_hm('2018-04-18 15:02', tz = 'America/Los_Angeles') & datetime < ymd_hm('2018-09-14 16:55', tz = 'America/Los_Angeles'))
+rcca_frc_2020_10 <- read_csv("FTR_2020_10_Hobo.csv") %>% #31,000 observation
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
+  filter(datetime > ymd_hm('2020-10-09 12:52') & datetime < ymd_hm('2021-08-28 10:29'))
 
-rcca_frc_2018_2 <- read_csv("SWS_2018_09_Hobo.csv") %>% # note 2019 data was lost
-  mutate(datetime = mdy_hm(`Date Time, GMT-07:00`, tz = 'America/Los_Angeles')) %>% # 6 failed to parse
-  filter(datetime > ymd_hm('2018-09-14 16:55', tz = 'America/Los_Angeles') & datetime < ymd_hm('2019-08-02 12:25', tz = 'America/Los_Angeles'))
+rcca_frc_2021_08 <- read_csv("FTR_2021_08_Hobo.csv") %>% 
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
+  filter(datetime > ymd_hm('2021-08-28 10:29') & datetime < ymd_hm('2022-09-10 10:42'))
 
 rcca_frc_2020 <- read_csv("SWS_2020_10_Hobo.csv") %>% 
   mutate(datetime = mdy_hm(`Date Time, GMT+00:00`, tz = 'UTC')) %>% 
