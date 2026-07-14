@@ -14,6 +14,7 @@ editor_options:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 library(tidyverse)
+library(flextable)
 
 theme_set(theme( 
    panel.background = element_rect(fill = 'transparent', color = NA_character_), # transparent panel background
@@ -89,7 +90,7 @@ head(rcca_swc_hobo[which(rcca_swc_hobo$year == 2020),]) # starts at 10:15 on Oct
 #   scale_x_datetime(breaks = '6 months')
 ```
 
-```{r plot daily means}
+```{r plot temps}
 rcca_swc_hobo_mean_daily <- rcca_swc_hobo %>% 
   group_by(year, month, day) %>% 
   summarise(mean_daily_temp = mean(temp_C, na.rm = T), sd_daily_temp = sd(temp_C), min_daily_temp = min(temp_C), max_daily_temp = max(temp_C), n = n()) %>% 
@@ -99,18 +100,28 @@ ggplot(rcca_swc_hobo_mean_daily, aes(x = date, y = mean_daily_temp)) +
   geom_errorbar(aes(ymin = mean_daily_temp - sd_daily_temp, ymax = mean_daily_temp + sd_daily_temp, width = 0), color = 'grey50') +
   geom_point() +
   scale_x_datetime(breaks = '4 months') +
-  scale_y_continuous(limits = c(7.7, 17), breaks = seq(8, 17, 1))
+  scale_y_continuous(limits = c(7.7, 17), breaks = seq(8, 17, 1)) +
+  ggtitle("Stillwater Cove")
 
-rcca_hobo_mean_daily %>% 
+# monthly monthly means
+rcca_swc_hobo %>% 
   ungroup() %>% 
-  summarise(mean_mean_daily = mean(mean_daily_temp))
+  group_by(year, month) %>% 
+  mutate(year = factor(year, levels = 2018:2024)) %>% 
+  summarise(mean_temp = mean(temp_C), sd = sd(temp_C)) %>% 
+  mutate(date = ymd(paste(year, month, 1))) %>% 
+  ggplot(aes(x = date, y = mean_temp)) +
+  geom_errorbar(aes(ymin = mean_temp - sd, ymax = mean_temp + sd, width = 0), color = 'grey60') +
+  scale_x_date(breaks = '3 months') +
+  geom_point() +
+  geom_line() +
+  ggtitle('Stillwater Cove Monthly Mean Temps')
 ```
 
 # Fort Ross Cove
 ```{r Fort Ross Cove load and format data, include = FALSE}
 
 # remove dates beyond deployments. 
-
 rcca_frc_2019 <- read_csv("FTR_2019_08_Hobo.csv") %>% #52,000 observations
   mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
   filter(datetime > ymd_hm('2019-08-02 11:25', tz = 'America/Los_Angeles') & datetime < ymd_hm('2020-10-09 12:52', tz = 'America/Los_Angeles')) %>% 
@@ -138,6 +149,32 @@ rcca_frc_hobo <- bind_rows(rcca_frc_2019, rcca_frc_2020, rcca_frc_2021, rcca_frc
 
 glimpse(rcca_frc_hobo)
 
-
 ```
 
+```{r plot temps}
+rcca_frc_hobo_mean_daily <- rcca_frc_hobo %>% 
+  group_by(year, month, day) %>% 
+  summarise(mean_daily_temp = mean(temp_C, na.rm = T), sd_daily_temp = sd(temp_C), min_daily_temp = min(temp_C), max_daily_temp = max(temp_C), n = n()) %>% 
+  mutate(date = ymd(paste(year, month, day, sep = '-')))
+
+ggplot(rcca_frc_hobo_mean_daily, aes(x = date, y = mean_daily_temp)) +
+  geom_errorbar(aes(ymin = mean_daily_temp - sd_daily_temp, ymax = mean_daily_temp + sd_daily_temp, width = 0), color = 'grey50') +
+  geom_point() +
+  scale_x_datetime(breaks = '4 months') +
+  scale_y_continuous(limits = c(7.7, 17), breaks = seq(8, 17, 1)) +
+  ggtitle("Fort Ross Cove")
+
+# monthly monthly means
+rcca_frc_hobo %>% 
+  ungroup() %>% 
+  group_by(year, month) %>% 
+  mutate(year = factor(year, levels = 2018:2024)) %>% 
+  summarise(mean_temp = mean(temp_C), sd = sd(temp_C)) %>% 
+  mutate(date = ymd(paste(year, month, 1))) %>% 
+  ggplot(aes(x = date, y = mean_temp)) +
+  geom_errorbar(aes(ymin = mean_temp - sd, ymax = mean_temp + sd, width = 0), color = 'grey60') +
+  scale_x_date(breaks = '3 months') +
+  geom_point() +
+  geom_line() +
+  ggtitle('Fort Ross Cove Monthly Mean Temps')
+```
