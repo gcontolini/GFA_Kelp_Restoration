@@ -143,6 +143,7 @@ rcca_frc_2022 <- read_csv("FTR_2022_09_Hobo.csv") %>%
   rename(temp_C = `Temp, °C (LGR S/N: 20338175, SEN S/N: 20338175)`)
   
 rcca_frc_hobo <- bind_rows(rcca_frc_2019, rcca_frc_2020, rcca_frc_2021, rcca_frc_2022) %>% 
+  mutate(datetime = with_tz(datetime, tzone = 'America/Los_Angeles')) %>% # show the time in Pacific Time, not GMT +0
   mutate(year = year(datetime)) %>% 
   mutate(month = month(datetime)) %>% 
   mutate(day = day(datetime))
@@ -183,32 +184,51 @@ rcca_frc_hobo %>%
 ```{r Ocean Cove load and format data, include = FALSE}
 
 # remove dates beyond deployments. 
-rcca_oc_2019 <- read_csv("FTR_2019_08_Hobo.csv") %>% #52,000 observations
-  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
-  filter(datetime > ymd_hm('2019-08-02 11:25', tz = 'America/Los_Angeles') & datetime < ymd_hm('2020-10-09 12:52', tz = 'America/Los_Angeles')) %>% 
-  rename(temp_C = `Temp, °C (LGR S/N: 20400694, SEN S/N: 20400694)`)
+rcca_oc_2018_05 <- read_csv("OCV_2018_05_Hobo.csv") %>% 
+  mutate(datetime = mdy_hm(`Date Time, GMT-07:00`, tz = 'America/Los_Angeles')) %>% 
+  filter(datetime > ymd_hm('2018-05-15 14:20', tz = 'America/Los_Angeles') & datetime < ymd_hm('2018-07-29 10:30', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 20219898, SEN S/N: 20219898)`)
 
-rcca_oc_2020 <- read_csv("FTR_2020_10_Hobo.csv") %>% #31,000 observation
-  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
-  filter(datetime > ymd_hm('2020-10-09 12:52', tz = 'America/Los_Angeles') & datetime < ymd_hm('2021-08-28 10:29', tz = 'America/Los_Angeles')) %>% 
-  rename(temp_C = `Temp, °C (LGR S/N: 20919267, SEN S/N: 20919267)`)
+rcca_oc_2018_07 <- read_csv("OCV_2018_07_Hobo.csv") %>% 
+  mutate(datetime = mdy_hm(`Date Time, GMT-07:00`, tz = 'America/Los_Angeles')) %>% 
+  filter(datetime > ymd_hm('2018-07-29 10:30', tz = 'America/Los_Angeles') & datetime < ymd_hm('2019-08-02 09:50', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 20400689, SEN S/N: 20400689)`) # 4 failed to parse
 
-rcca_oc_2021 <- read_csv("FTR_2021_08_Hobo.csv") %>% 
+rcca_oc_2019 <- read_csv("OCV_2019_08_Hobo.csv") %>% 
   mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
-  filter(datetime > ymd_hm('2021-08-28 10:29', tz = 'America/Los_Angeles') & datetime < ymd_hm('2022-09-10 10:42', tz = 'America/Los_Angeles')) %>% 
-  rename(temp_C = `Temp, °C (LGR S/N: 20400460, SEN S/N: 20400460)`)
+  filter(datetime > ymd_hm('2019-08-02 09:50', tz = 'America/Los_Angeles') & datetime < ymd_hm('2020-09-02 09:40', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 20338171, SEN S/N: 20338171)`)
 
-rcca_oc_2022 <- read_csv("FTR_2022_09_Hobo.csv") %>% 
+rcca_oc_2020 <- read_csv("OCV_2020_09_Hobo.csv") %>% 
   mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
-  filter(datetime > ymd_hm('2022-09-10 10:42', tz = 'America/Los_Angeles') & datetime < ymd_hm('2023-09-23 10:15', tz = 'America/Los_Angeles')) %>% 
-  rename(temp_C = `Temp, °C (LGR S/N: 20338175, SEN S/N: 20338175)`)
+  filter(datetime > ymd_hm('2020-09-02 09:40', tz = 'America/Los_Angeles') & datetime < ymd_hm('2021-08-29 11:50', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 20408782, SEN S/N: 20408782)`)
+
+rcca_oc_2021 <- read_csv("OCV_2021_058_Hobo.csv") %>% 
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
+  filter(datetime > ymd_hm('2021-08-29 11:50', tz = 'America/Los_Angeles') & datetime < ymd_hm('2022-09-10 09:48', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 20919270, SEN S/N: 20919270)`)
+
+rcca_oc_2022 <- read_csv("OCV_2022_09_Hobo.csv") %>% 
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
+  filter(datetime > ymd_hm('2022-09-10 09:48', tz = 'America/Los_Angeles') & datetime < ymd_hm('2023-09-8 16:15', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 21462433, SEN S/N: 21462433)`)
   
-rcca_oc_hobo <- bind_rows(rcca_frc_2019, rcca_frc_2020, rcca_frc_2021, rcca_frc_2022) %>% 
+rcca_oc_2023 <- read_csv("OCV_2023_09_HOBO.csv") %>% 
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
+  filter(datetime > ymd_hm('2023-09-8 16:15', tz = 'America/Los_Angeles') & datetime < ymd_hm('2024-08-24 10:00', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 21751449, SEN S/N: 21751449)`)
+
+rcca_oc_hobo <- bind_rows(rcca_oc_2018_05, rcca_oc_2018_07, rcca_oc_2019, rcca_oc_2020, rcca_oc_2021, rcca_oc_2022, rcca_oc_2023) %>% 
   mutate(year = year(datetime)) %>% 
   mutate(month = month(datetime)) %>% 
   mutate(day = day(datetime))
 
-glimpse(rcca_oc_hobo)
+glimpse(rcca_oc_hobo) 
+tz(rcca_oc_hobo$datetime) #America/Los_Angeles 
+
+# Check the timezone with tz()
+# Change what timezone is displayed with with_tz(datetime, tzone = 'America/Los_Angeles')
 
 ```
 
@@ -231,7 +251,7 @@ rcca_oc_hobo %>%
   group_by(year, month) %>% 
   mutate(year = factor(year, levels = 2018:2024)) %>% 
   summarise(mean_temp = mean(temp_C), sd = sd(temp_C)) %>% 
-  mutate(date = ymd(paste(year, month, 1))) %>% 
+  mutate(date = ymd(paste(year, month, 1))) %>% # make a new date variable that is continuous so it plots lines
   ggplot(aes(x = date, y = mean_temp)) +
   geom_errorbar(aes(ymin = mean_temp - sd, ymax = mean_temp + sd, width = 0), color = 'grey60') +
   scale_x_date(breaks = '3 months') +
@@ -244,32 +264,44 @@ rcca_oc_hobo %>%
 ```{r Gerstle Cove load and format data, include = FALSE}
 
 # remove dates beyond deployments. 
-rcca_gc_2019 <- read_csv("FTR_2019_08_Hobo.csv") %>% #52,000 observations
-  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
-  filter(datetime > ymd_hm('2019-08-02 11:25', tz = 'America/Los_Angeles') & datetime < ymd_hm('2020-10-09 12:52', tz = 'America/Los_Angeles')) %>% 
-  rename(temp_C = `Temp, °C (LGR S/N: 20400694, SEN S/N: 20400694)`)
+rcca_gc_2018 <- read_csv("GCV_2018_07_Hobo.csv") %>% 
+  mutate(datetime = mdy_hm(`Date Time, GMT-07:00`)) %>% 
+  filter(datetime > ymd_hm('2018-07-28 13:15', tz = 'America/Los_Angeles') & datetime < ymd_hm('2019-07-27 10:00', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 20400700, SEN S/N: 20400700)`)
 
-rcca_gc_2020 <- read_csv("FTR_2020_10_Hobo.csv") %>% #31,000 observation
+rcca_gc_2020 <- read_csv("GCV_2020_09_Hobo.csv") %>% 
   mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
-  filter(datetime > ymd_hm('2020-10-09 12:52', tz = 'America/Los_Angeles') & datetime < ymd_hm('2021-08-28 10:29', tz = 'America/Los_Angeles')) %>% 
-  rename(temp_C = `Temp, °C (LGR S/N: 20919267, SEN S/N: 20919267)`)
+  filter(datetime > ymd_hm('2020-09-03 09:30', tz = 'America/Los_Angeles') & datetime < ymd_hm('2021-09-11 13:23', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 20408788, SEN S/N: 20408788)`)
 
-rcca_gc_2021 <- read_csv("FTR_2021_08_Hobo.csv") %>% 
+rcca_gc_2021 <- read_csv("GCV_2021_09_Hobo.csv") %>% 
   mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
-  filter(datetime > ymd_hm('2021-08-28 10:29', tz = 'America/Los_Angeles') & datetime < ymd_hm('2022-09-10 10:42', tz = 'America/Los_Angeles')) %>% 
-  rename(temp_C = `Temp, °C (LGR S/N: 20400460, SEN S/N: 20400460)`)
+  filter(datetime > ymd_hm('2021-09-11 13:23', tz = 'America/Los_Angeles') & datetime < ymd_hm('2022-08-20 10:53', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 20475915, SEN S/N: 20475915)`)
 
-rcca_gc_2022 <- read_csv("FTR_2022_09_Hobo.csv") %>% 
+rcca_gc_2022 <- read_csv("GCV_2022_08_Hobo.csv") %>% 
   mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
-  filter(datetime > ymd_hm('2022-09-10 10:42', tz = 'America/Los_Angeles') & datetime < ymd_hm('2023-09-23 10:15', tz = 'America/Los_Angeles')) %>% 
-  rename(temp_C = `Temp, °C (LGR S/N: 20338175, SEN S/N: 20338175)`)
+  filter(datetime > ymd_hm('2022-08-20 10:53', tz = 'America/Los_Angeles') & datetime < ymd_hm('2023-09-09 12:22', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 21477722, SEN S/N: 21477722)`)
   
-rcca_gc_hobo <- bind_rows(rcca_frc_2019, rcca_frc_2020, rcca_frc_2021, rcca_frc_2022) %>% 
+rcca_gc_2023 <- read_csv("GCV_2023_09_HOBO.csv") %>% 
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
+  filter(datetime > ymd_hm('2023-09-09 12:22', tz = 'America/Los_Angeles') & datetime < ymd_hm('2024-08-24 14:45', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 21751438, SEN S/N: 21751438)`)
+
+rcca_gc_2024 <- read_csv("GCV_2024_08_Hobo.csv") %>% 
+  mutate(datetime = mdy_hm(`Date Time, GMT+00:00`)) %>% 
+  filter(datetime > ymd_hm('2024-08-24 14:45', tz = 'America/Los_Angeles') & datetime < ymd_hm('2025-08-23 11:11', tz = 'America/Los_Angeles')) %>% 
+  rename(temp_C = `Temp, °C (LGR S/N: 20338178, SEN S/N: 20338178)`)
+
+rcca_gc_hobo <- bind_rows(rcca_gc_2018, rcca_gc_2020, rcca_gc_2021, rcca_gc_2022, rcca_gc_2023, rcca_gc_2024) %>% 
   mutate(year = year(datetime)) %>% 
   mutate(month = month(datetime)) %>% 
-  mutate(day = day(datetime))
+  mutate(day = day(datetime)) %>% 
+  mutate(datetime = with_tz(datetime, tzone = 'America/Los_Angeles'))
 
 glimpse(rcca_gc_hobo)
+tz(rcca_gc_hobo$datetime) # LA
 
 ```
 
@@ -284,13 +316,13 @@ ggplot(rcca_gc_hobo_mean_daily, aes(x = date, y = mean_daily_temp)) +
   geom_point() +
   scale_x_datetime(breaks = '4 months') +
   scale_y_continuous(limits = c(7.7, 17), breaks = seq(8, 17, 1)) +
-  ggtitle("Ocean Cove")
+  ggtitle("Gerstle Cove")
 
 # monthly monthly means
 rcca_gc_hobo %>% 
   ungroup() %>% 
   group_by(year, month) %>% 
-  mutate(year = factor(year, levels = 2018:2024)) %>% 
+  mutate(year = factor(year, levels = 2018:2025)) %>% 
   summarise(mean_temp = mean(temp_C), sd = sd(temp_C)) %>% 
   mutate(date = ymd(paste(year, month, 1))) %>% 
   ggplot(aes(x = date, y = mean_temp)) +
