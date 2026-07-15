@@ -331,4 +331,5 @@ rcca_gc_hobo %>%
   geom_point() +
   geom_line() +
   ggtitle('Gerstle Cove Monthly Mean Temps')
+#newline
 ```
