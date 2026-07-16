@@ -13,7 +13,7 @@ git status
 # do some work, then add something you worked on
 git add filename.Rmd
 # commit what you just added 
-git commit -m "message"
+git commit -m "WIP"
 # amend a commit since you're not done with the thing you're working on yet 
 git add filename.Rmd
 git commit --amend --no-edit
