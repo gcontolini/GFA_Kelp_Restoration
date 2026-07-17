@@ -11,6 +11,7 @@ git pull
 git ls-files 
 # you should see all your files.
 git status 
+
 # shows if you are working on a branch or if you're up to date with main.
 # do some work, then add something you worked on
 git add filename.Rmd
