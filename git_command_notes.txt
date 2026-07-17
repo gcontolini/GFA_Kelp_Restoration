@@ -24,13 +24,13 @@ git commit --amend --no-edit
 # make the final commit after you finished amending a bunch of times
 git add filename.Rmd
 git commit --amend -m "Implement awesome feature; closes #43"
-# push (to local? to remote? IDK)
+# push (to remote)
 git push
 # remove a file?
 git rm filename.txt # not sure this is right
 
-
-## fork someone else's repo so you can make changes and then push them back to that person's repo.
+## Forking ##
+# Fork someone else's repo so you can make changes and then push them back to that person's repo.
 # This way, you can commit and push changes locally to a remote copy of the forked repo, and then ask to push them back to that person's repo in a "pull request."
 
 You can do this With usethis: usethis::create_from_github("OWNER/REPO", fork = TRUE)
