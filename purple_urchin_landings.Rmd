@@ -231,7 +231,10 @@ cpue %>%
   set_caption("Summary of pounds removed per diver day for MS")
 
 ggplot(cpue, aes(x = year, y = Lbs_per_diver_day, fill = site)) +
-  geom_col()
+  geom_col(position = 'dodge') + # the position dodge makes them side by side instead of stacked!!\
+  scale_y_continuous(expand = c(0,0), breaks = seq(0, 425, 50)) +
+  labs(y = 'Lbs removed per diver per day') +
+  theme(axis.text = element_text(size = 22), axis.title = element_text(size = 28), legend.text = element_text(size = 24), legend.title = element_text(size = 28))
 
 ##### 2025 only #####
 # landings per site
