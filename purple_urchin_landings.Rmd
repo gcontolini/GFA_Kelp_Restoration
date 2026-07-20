@@ -221,6 +221,18 @@ flextable(landings_ms_sum) %>%
   # flextable::set_caption("Landings and effort per site per year") %>% 
   colformat_double(j = c(4, 5), digits = 0)
 
+### Fort Ross and Timber only CPUE calculations
+
+cpue <- landings_ms_sum %>% 
+  mutate(Lbs_per_diver_day = total_landings_lbs / days) 
+
+cpue %>% 
+  flextable() %>% 
+  set_caption("Summary of pounds removed per diver day for MS")
+
+ggplot(cpue, aes(x = year, y = Lbs_per_diver_day, fill = site)) +
+  geom_col()
+
 ##### 2025 only #####
 # landings per site
 landings_2025_site <- landings %>%
