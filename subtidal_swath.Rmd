@@ -2052,11 +2052,6 @@ dim(swath_target_den_sites_mssites) # 78 x 6
 NMDS_sites_mssites <- dplyr::left_join(data_scores_mssites, swath_target_den_sites, by = 'transect_ID') 
 rownames(swath_matrix_counts0_mssites) = paste(NMDS_sites_mssites$site, NMDS_sites_mssites$transect_ID)
 
-# plots using base R
-ordiplot(MDS_mssites, type = 'n')
-orditorp(MDS_mssites, display = 'species', col = 'pink') # displays the species
-orditorp(MDS_mssites, display = 'sites') # displays the sites
-
 ```
 
 ```{r fig.cap = 'Community dissimilarities (Bray-Curtis) among subtidal swath transects at Fort Ross, Timber, Gerstle, and Ocean coves from 2022-2025. Species vectors shown for significant species only (P < 0.05)'}
@@ -2084,6 +2079,20 @@ ggplot(NMDS_sites_mssites, aes(x = NMDS1, y = NMDS2, color = site, shape = year)
   theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12))
 
 # Next try removing select sites without changing the scales. Hm. 
+
+## Make the same plot with just the axes to help set it up for a presentation
+ggplot(NMDS_sites_mssites, aes(x = NMDS1, y = NMDS2, color = site, shape = year)) +
+  geom_point(size = 3, alpha = .7) +
+  # stat_ellipse() +
+  annotate('text', x = -1.7, y = 2.3, label = paste('Stress =', round(MDS_mssites$stress, digits = 3))) +
+  scale_y_continuous(limits = c(-1.6, 2.5)) +
+  scale_x_continuous(limits = c(-1.8, 1.3)) +
+  ggtitle('Swath community dissimilarities') + 
+  geom_segment(data = sig_spp_scores_mssites, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), arrow = arrow(length = unit(0.2, "cm")), color = 'grey70', lwd = 0.3)  +
+  scale_color_manual(values = c('grey100', 'grey99', 'grey98', 'grey97')) +
+  annotate("text", size = 3, x = sig_spp_scores_mssites$NMDS1, y = sig_spp_scores_mssites$NMDS2, label = sig_spp_scores_mssites$species, color = 'grey60') +
+  my_theme +
+  theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12))
 ```
 
 ```{r NMDS with just select sites set up, include = FALSE}
@@ -2145,13 +2154,31 @@ sig_spp_scores_select <- subset(spp_scores_select, pval <= 0.05)
 sig_spp_scores_select$site = select_sites[1] # it needs a site col to plot, but if you make a new site it will add to the legend. I just override the colors in the ggplot.
 sig_spp_scores_select$year = select_years[1] # it needs a year col to plot, but if you make a new year it will add it to the legend. 
 
+# Plot with no points to set it up first
 ggplot(NMDS_sites_select, aes(x = NMDS1, y = NMDS2, color = year)) +
-  stat_ellipse() +
+  scale_color_manual(values = c('grey100', 'grey99', 'grey98', 'grey97')) +
+  geom_point(size = 3, alpha = 0.7) +
   annotate('text', x = .7, y = .98, label = paste('Stress =', round(MDS_select$stress, digits = 3))) +
   ggtitle(paste('Swath community dissimilarities at', select_sites)) + 
   geom_segment(data = sig_spp_scores_select, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), arrow = arrow(length = unit(0.2, "cm")), color = 'grey70', lwd = 0.3)  +
-  geom_point(size = 3, alpha = 0.7) +
   annotate("text", size = 3, x = sig_spp_scores_select$NMDS1, y = sig_spp_scores_select$NMDS2, label = sig_spp_scores_select$species, color = 'grey60') +
+  scale_x_continuous(limits = c(-0.5, 1), breaks = seq(-1, 1, 0.5)) +
+  scale_y_continuous(limits = c(-1, 1), breaks = seq(-1, 1, 0.5), expand = c(0,0)) +
+  my_theme +
+  theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12))
+
+# Color scale to indicate change in time
+blues4 <- c('skyblue', 'dodgerblue2', 'navyblue', 'black')
+ggplot(NMDS_sites_select, aes(x = NMDS1, y = NMDS2, color = year)) +
+  stat_ellipse() +
+  geom_point(size = 3) +
+  scale_color_manual(values = blues4) +
+  annotate('text', x = .7, y = .98, label = paste('Stress =', round(MDS_select$stress, digits = 3))) +
+  ggtitle(paste('Swath community dissimilarities at', select_sites)) + 
+  geom_segment(data = sig_spp_scores_select, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), arrow = arrow(length = unit(0.2, "cm")), color = 'grey70', lwd = 0.3)  +
+  annotate("text", size = 3, x = sig_spp_scores_select$NMDS1, y = sig_spp_scores_select$NMDS2, label = sig_spp_scores_select$species, color = 'grey60') +
+  scale_x_continuous(limits = c(-0.5, 1), breaks = seq(-1, 1, 0.5)) +
+  scale_y_continuous(limits = c(-1, 1), breaks = seq(-1, 1, 0.5), expand = c(0,0)) +
   my_theme +
   theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12))
   
