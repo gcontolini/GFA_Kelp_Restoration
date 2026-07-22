@@ -1978,9 +1978,9 @@ rownames(swath_matrix_counts0_decostand) = paste(NMDS_sites$site, NMDS_sites$tra
 # MDS1 <- metaMDS(swath_matrix_counts0, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.1799.
 
 # plots using base R
-ordiplot(MDS1_decostand, type = 'n')
-orditorp(MDS1_decostand, display = 'species', col = 'orchid4') # displays the species
-orditorp(MDS1_decostand, display = 'sites') # displays the sites
+# ordiplot(MDS1_decostand, type = 'n')
+# orditorp(MDS1_decostand, display = 'species', col = 'orchid4') # displays the species
+# orditorp(MDS1_decostand, display = 'sites') # displays the sites
   
 ```
 
@@ -2098,7 +2098,7 @@ ggplot(NMDS_sites_mssites, aes(x = NMDS1, y = NMDS2, color = site, shape = year)
 ```{r NMDS with just select sites set up, include = FALSE}
 
 ############## Pick sites here #####################
-select_sites <- c('Ocean')###
+select_sites <- c('Timber')###
 select_years <- c(2021:2025)
 ####################################################
 
@@ -2162,8 +2162,8 @@ ggplot(NMDS_sites_select, aes(x = NMDS1, y = NMDS2, color = year)) +
   ggtitle(paste('Swath community dissimilarities at', select_sites)) + 
   geom_segment(data = sig_spp_scores_select, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), arrow = arrow(length = unit(0.2, "cm")), color = 'grey70', lwd = 0.3)  +
   annotate("text", size = 3, x = sig_spp_scores_select$NMDS1, y = sig_spp_scores_select$NMDS2, label = sig_spp_scores_select$species, color = 'grey60') +
-  scale_x_continuous(limits = c(-0.5, 1), breaks = seq(-1, 1, 0.5)) +
-  scale_y_continuous(limits = c(-1, 1), breaks = seq(-1, 1, 0.5), expand = c(0,0)) +
+  scale_x_continuous(limits = c(-1.7, 1.5), breaks = seq(-1.5, 1.5, 0.5)) +
+  scale_y_continuous(limits = c(-0.9, 1), breaks = seq(-1, 1, 0.5), expand = c(0,0)) +
   my_theme +
   theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12))
 
@@ -2177,10 +2177,24 @@ ggplot(NMDS_sites_select, aes(x = NMDS1, y = NMDS2, color = year)) +
   ggtitle(paste('Swath community dissimilarities at', select_sites)) + 
   geom_segment(data = sig_spp_scores_select, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), arrow = arrow(length = unit(0.2, "cm")), color = 'grey70', lwd = 0.3)  +
   annotate("text", size = 3, x = sig_spp_scores_select$NMDS1, y = sig_spp_scores_select$NMDS2, label = sig_spp_scores_select$species, color = 'grey60') +
-  scale_x_continuous(limits = c(-0.5, 1), breaks = seq(-1, 1, 0.5)) +
-  scale_y_continuous(limits = c(-1, 1), breaks = seq(-1, 1, 0.5), expand = c(0,0)) +
+  scale_x_continuous(limits = c(-1.7, 2), breaks = seq(-1.5, 2, 0.5)) +
+  scale_y_continuous(limits = c(-1.2, 1.2), breaks = seq(-1.5, 1, 0.5), expand = c(0,0)) +
   my_theme +
   theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12))
+
+### scale for Ocean ###
+  # scale_x_continuous(limits = c(-0.5, 1), breaks = seq(-1, 1, 0.5)) +
+  # scale_y_continuous(limits = c(-1, 1), breaks = seq(-1, 1, 0.5), expand = c(0,0)) +
+    
+### scale for Fort Ross ###
+  # scale_x_continuous(limits = c(-1.7, 1.5), breaks = seq(-1.5, 1.5, 0.5)) +
+  # scale_y_continuous(limits = c(-0.9, 1), breaks = seq(-1, 1, 0.5), expand = c(0,0)) +
+
+### scale for Timber ###
+  scale_x_continuous(limits = c(-1.7, 2), breaks = seq(-1.5, 2, 0.5)) +
+  scale_y_continuous(limits = c(-1.2, 1.2), breaks = seq(-1.5, 1, 0.5), expand = c(0,0)) +
+
+    ### scale for Gerstle ###
   
 ```
 
