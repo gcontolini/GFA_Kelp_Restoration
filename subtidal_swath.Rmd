@@ -2098,7 +2098,7 @@ ggplot(NMDS_sites_mssites, aes(x = NMDS1, y = NMDS2, color = site, shape = year)
 ```{r NMDS with just select sites set up, include = FALSE}
 
 ############## Pick sites here #####################
-select_sites <- c('Timber')###
+select_sites <- c('Ocean')###
 select_years <- c(2021:2025)
 ####################################################
 
@@ -2191,8 +2191,8 @@ ggplot(NMDS_sites_select, aes(x = NMDS1, y = NMDS2, color = year)) +
   # scale_y_continuous(limits = c(-0.9, 1), breaks = seq(-1, 1, 0.5), expand = c(0,0)) +
 
 ### scale for Timber ###
-  scale_x_continuous(limits = c(-1.7, 2), breaks = seq(-1.5, 2, 0.5)) +
-  scale_y_continuous(limits = c(-1.2, 1.2), breaks = seq(-1.5, 1, 0.5), expand = c(0,0)) +
+  # scale_x_continuous(limits = c(-1.7, 2), breaks = seq(-1.5, 2, 0.5)) +
+  # scale_y_continuous(limits = c(-1.2, 1.2), breaks = seq(-1.5, 1, 0.5), expand = c(0,0)) +
 
     ### scale for Gerstle ###
   
@@ -2220,11 +2220,60 @@ ano_test_all # NS
 # large R means larger difs between groups. R = 0.04. Significance = 0.237. 
 
 ## Using just FRC and TC.
-ano_test_frctc = anosim(swath_matrix_counts0_frctc, NMDS_sites_frctc$site, distance = 'bray', permutations = 999)
+ano_test_frctc = anosim(swath_matrix_counts0_frctc, NMDS_sites_frctc$site, distance = 'bray', permutations = 999) #***bookmark
 ano_test_frctc # NS
 
 # Next, try the anosim or perhaps adonis with site and year and interaction.
+
+swath_matrix_counts0_dist <- 
+  select()
+
 ```
+
+```{r Test if there is a significant difference btwn ms sites, include = FALSE}
+# Calculate bray-curtis dissimilarities
+# sites were selected above
+swath_spp_dist <- vegdist(swath_matrix_counts0_mssites, method = 'bray') #not sure why I did this. Maybe for the mrpp?
+# mrpp() multi response permutation procedure and mean dissimilarity matrix. Provides a test of whether there is a significant difference between two or more groups of sampling units. Function metadist() finds the mean within and between block dissimilarities. 
+
+mrpp(swath_matrix_counts0_mssites, grouping = unique(NMDS_sites_mssites$transect_ID), permutations = 999, distance = 'bray')
+# It ran but looks like everything is NaN so it probably didn't work. again not sure why I ran this function.
+# Chance corrected within-group agreement A: 
+# Based on observed delta: X and expected delta: Y
+# Significance of delta: 
+
+# another term is dist, which is a dist object of dissimilarities, such as produced by functions dist, vegdist, or designdist. 
+
+# summary(meandist(swath_spp_dist, grouping = swath_matrix_counts$SITE)) # I don't know what this means yet. 
+
+# ANOSIM test also tests if there are differences among groups. 
+## Using all sites.
+ano_test_ms = anosim(swath_matrix_counts0_mssites, NMDS_sites_mssites$site, distance = "bray", permutations = 999) # worked
+ano_test_ms # NS
+# large R means larger difs between groups. R = 0.01.1726. Significance = 0.333 
+
+## Using just FRC and TC.
+ano_test_frctc = anosim(swath_matrix_counts0_frctc, NMDS_sites_frctc$site, distance = 'bray', permutations = 999) #***bookmark
+ano_test_frctc # NS
+
+# Next, try the anosim or perhaps adonis with site and year and interaction.
+
+swath_matrix_counts0_dist <- 
+  select()
+
+```
+
+```{r Test if there is a significant difference btwn years in a single select site, include = FALSE}
+# sites were selected above. run below to remind you.
+select_sites
+# you have to rerun the chunk called "NMDS with just select sites set up" for this to work. 
+
+ano_test_ms = anosim(swath_matrix_counts0_select, NMDS_sites_select$year, distance = "bray", permutations = 999) # worked
+ano_test_ms # 
+# large R means larger difs between groups.
+
+```
+
 
 ```{r simper}
 
