@@ -891,9 +891,6 @@ medianpsu %>%
 
 ```{r fig.cap = 'Distribution of purple urchin densities per site over time for selected sites and years. Labels on boxes indicate medians. The upper and lower hinges correspond to the first and third quartiles. Whiskers extend to 1.5 * the interquartile range. Data outside the whiskers (outliers) are shown as points. Survey type differed between years, where URCHIN surveys were performed only in 2023. Sample sizes indicated in the table.'}
 
-select_sites <- c('Fort Ross', 'Timber', 'Gerstle', 'Ocean')
-select_years <- c(2021:2025)
-
 swath_target_den_purp_select <- swath_target_den_purp %>% 
   dplyr::filter(site %in% select_sites) %>% 
   filter(year %in% select_years)
@@ -1568,7 +1565,6 @@ ggplot(size_sums_red %>% uncount(count), aes(x = year, y = size_cm)) + # had to 
 ```
 
 ```{r fig.cap = "Distribution of red urchin diameters from subtidal surveys over time at select sites"}
-select_sites <- c('Shell Beach', 'Pebble Beach')
 
 size_sums_red_site_year_select <- size_sums_red_site_year %>% 
   filter(site %in% select_sites) 
@@ -1910,7 +1906,6 @@ ggplot(size_sums_hk_select %>% uncount(count), aes(x = year, y = size_cm)) + # h
 
 # Nonmetric multidimensional scaling plots showing community dissimilarities
 ```{r NMDS set up for algae and inverts, include = FALSE}
-#***
 # to visualize how the communities are different
 swath_target_den2 <- swath_target_den %>% 
   ungroup() # so it ungroups all the naming variables
@@ -2054,7 +2049,7 @@ rownames(swath_matrix_counts0_mssites) = paste(NMDS_sites_mssites$site, NMDS_sit
 
 ```
 
-```{r fig.cap = 'Community dissimilarities (Bray-Curtis) among subtidal swath transects at Fort Ross, Timber, Gerstle, and Ocean coves from 2022-2025. Species vectors shown for significant species only (P < 0.05)'}
+```{r fig.cap = 'Community dissimilarities (Bray-Curtis) among subtidal swath transects at Fort Ross, Timber, Gerstle, and Ocean coves from 2021-2025. Species vectors shown for significant species only (P < 0.05)'}
 # following this example https://www.rpubs.com/RGrieger/545184
 site_fit_mssites <- envfit(MDS_mssites, NMDS_sites_mssites$site, permutations = 999) # sites
 spp_fit_mssites <- envfit(MDS_mssites, swath_matrix_counts0_mssites, permutations = 999) # species. there were 50+ warnings bc SD = 0.
@@ -2098,7 +2093,7 @@ ggplot(NMDS_sites_mssites, aes(x = NMDS1, y = NMDS2, color = site, shape = year)
 ```{r NMDS with just select sites set up, include = FALSE}
 
 ############## Pick sites here #####################
-select_sites <- c('Ocean')###
+select_sites <- c('Fort Ross', 'Timber', 'Gerstle', 'Ocean')###
 select_years <- c(2021:2025)
 ####################################################
 
@@ -2220,20 +2215,18 @@ ano_test_all # NS
 # large R means larger difs between groups. R = 0.04. Significance = 0.237. 
 
 ## Using just FRC and TC.
-ano_test_frctc = anosim(swath_matrix_counts0_frctc, NMDS_sites_frctc$site, distance = 'bray', permutations = 999) #***bookmark
-ano_test_frctc # NS
+ano_test_frctc = anosim(swath_matrix_counts0_frctc, NMDS_sites_frctc$site, distance = 'bray', permutations = 999) ano_test_frctc # NS
 
 # Next, try the anosim or perhaps adonis with site and year and interaction.
 
-swath_matrix_counts0_dist <- 
-  select()
+
 
 ```
 
 ```{r Test if there is a significant difference btwn ms sites, include = FALSE}
 # Calculate bray-curtis dissimilarities
 # sites were selected above
-swath_spp_dist <- vegdist(swath_matrix_counts0_mssites, method = 'bray') #not sure why I did this. Maybe for the mrpp?
+swath_spp_dist_mssites <- vegdist(swath_matrix_counts0_mssites, method = 'bray') 
 # mrpp() multi response permutation procedure and mean dissimilarity matrix. Provides a test of whether there is a significant difference between two or more groups of sampling units. Function metadist() finds the mean within and between block dissimilarities. 
 
 mrpp(swath_matrix_counts0_mssites, grouping = unique(NMDS_sites_mssites$transect_ID), permutations = 999, distance = 'bray')
@@ -2250,27 +2243,29 @@ mrpp(swath_matrix_counts0_mssites, grouping = unique(NMDS_sites_mssites$transect
 ## Using all sites.
 ano_test_ms = anosim(swath_matrix_counts0_mssites, NMDS_sites_mssites$site, distance = "bray", permutations = 999) # worked
 ano_test_ms # NS
-# large R means larger difs between groups. R = 0.01.1726. Significance = 0.333 
+# large R means larger difs between groups. R = 0.011726. Significance = 0.333 
+# but the PERMANOVA has a different results??
+adonis2(swath_matrix_counts0_mssites ~ NMDS_sites_mssites$site)
+# same result when I manually enter a distance matrix (swath_matrix_counts0_mssites)
 
-## Using just FRC and TC.
-ano_test_frctc = anosim(swath_matrix_counts0_frctc, NMDS_sites_frctc$site, distance = 'bray', permutations = 999) #***bookmark
-ano_test_frctc # NS
+
 
 # Next, try the anosim or perhaps adonis with site and year and interaction.
 
-swath_matrix_counts0_dist <- 
-  select()
+adonis2(swath_matrix_counts0_mssites ~ NMDS_sites_mssites$site * NMDS_sites_mssites$year)
 
 ```
 
 ```{r Test if there is a significant difference btwn years in a single select site, include = FALSE}
 # sites were selected above. run below to remind you.
-select_sites
+select_sites #****
 # you have to rerun the chunk called "NMDS with just select sites set up" for this to work. 
 
-ano_test_ms = anosim(swath_matrix_counts0_select, NMDS_sites_select$year, distance = "bray", permutations = 999) # worked
+ano_test_ms = anosim(swath_matrix_counts0_select, NMDS_sites_select$site, distance = "bray", permutations = 999) # worked
 ano_test_ms # 
 # large R means larger difs between groups.
+adonis2(swath_matrix_counts0_select ~ NMDS_sites_select$site * NMDS_sites_select$year, by = 'terms') # 
+
 
 ```
 
