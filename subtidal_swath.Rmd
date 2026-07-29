@@ -891,6 +891,9 @@ medianpsu %>%
 
 ```{r fig.cap = 'Distribution of purple urchin densities per site over time for selected sites and years. Labels on boxes indicate medians. The upper and lower hinges correspond to the first and third quartiles. Whiskers extend to 1.5 * the interquartile range. Data outside the whiskers (outliers) are shown as points. Survey type differed between years, where URCHIN surveys were performed only in 2023. Sample sizes indicated in the table.'}
 
+select_sites <- c('Fort Ross', 'Timber', 'Gerstle', 'Ocean')
+select_years <- c(2021:2025)
+
 swath_target_den_purp_select <- swath_target_den_purp %>% 
   dplyr::filter(site %in% select_sites) %>% 
   filter(year %in% select_years)
@@ -983,7 +986,7 @@ rect <- data.frame(xmin = rep(2.5, 4), xmax = rep(Inf, 4),
     ) 
 )
 
-tag_facet(fig2abcd)
+# tag_facet(fig2abcd)
 
 
 # print the flextable showing sample sizes
@@ -1085,8 +1088,10 @@ size_sums_purp_site_year %>%
 
 ```{r fig.cap = "Distribution of purple urchin diameters from subtidal surveys over time at select sites and years. Data combined from AbU, KELPUR, and URCHIN surveys. Sample sizes indicated in the table."}
 
-select_sites = c('Fort Ross', 'Timber', 'Gerstle', 'Ocean')
-select_years = c(2022:2025)
+############## Pick sites here #####################
+select_sites <- c('Fort Ross', 'Timber', 'Gerstle', 'Ocean')
+select_years <- c(2021:2025)
+####################################################
 
 size_sums_purp_select <- size_sums_purp %>% 
   filter(site %in% select_sites & year %in% select_years)
@@ -1379,7 +1384,7 @@ mediansk_mssites <- swath_target_den_kelp_mssites %>%
     ) 
 )
 
-tag_facet(fig2efgh, tag_pool = c('e', 'f', 'g', 'h'))
+# tag_facet(fig2efgh, tag_pool = c('e', 'f', 'g', 'h'))
 
 # print the flextable showing sample sizes
 mediansk_mssites %>% 
@@ -2091,11 +2096,8 @@ ggplot(NMDS_sites_mssites, aes(x = NMDS1, y = NMDS2, color = site, shape = year)
 ```
 
 ```{r NMDS with just select sites set up, include = FALSE}
-
-############## Pick sites here #####################
-select_sites <- c('Fort Ross', 'Timber', 'Gerstle', 'Ocean')###
-select_years <- c(2021:2025)
-####################################################
+# sites were selected above. run below to check what they were.
+select_sites
 
 swath_target_den_full_transects_select <- 
   swath_target_den_full_transects %>%
