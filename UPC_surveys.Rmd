@@ -58,9 +58,9 @@ upc$year = as.factor(upc$year)
 
 ```{r check data for completeness, include = FALSE}
 # assign transect ID for ease of sorting later
-upc$transect_ID <- upc %>% 
-  dplyr::group_by(year, site, subsite, region, zone, observer, transect) %>%
-  group_indices()
+# upc$transect_ID <- upc %>% 
+#   dplyr::group_by(year, site, subsite, region, zone, observer, transect) %>%
+#   group_indices()
 
 # number of surveys completed per site per year
 tot_upc_site_year <- upc %>% 
@@ -74,15 +74,14 @@ tot_upc_site_year <- upc %>%
 #   arrange(year, site) %>% 
 #   flextable()
 
-# check that there are 30 observations per transect.
+# check that there are 90 observations per transect (30 for substrate, 30 for relief, 30 for cover. Exclude superlayer for this check)..
 upc %>% 
-  dplyr::filter(category == 'SUBSTRATE') %>%
+  dplyr::filter(!category == 'SUPERLAYER') %>%
   dplyr::group_by(transect_ID) %>% # group by replicate transect
   dplyr::summarise(count = sum(count)) %>% 
-  dplyr::filter(!count == 30) # there are only three missing 1 to 10 data points.
-# Transect 7 was never completed because they didn't survey the last 10m segment
-# Transect 10 same story: didn't survey last 10 m, but sometimes observed 11 points instead of 10
-# Transect 17: forgot one point
+  dplyr::filter(!count == 90) 
+
+# they're all very close to 90 or have a known missing segment so we're all good here :) 
 
 ```
 
@@ -93,29 +92,29 @@ tot_upc_site_year %>% flextable()
 ```{r substrate}
 # how much of each transect was bedrock, boulder, cobble, etc?
 upc_substrate <- upc %>%
-  dplyr::group_by(year, month, day, site, subsite, region, zone, transect, transect_ID, category, classcode) %>%
+  dplyr::group_by(year, month, day, site, subsite, transect_ID, category, classcode) %>%
   dplyr::summarise(count = sum(count)) %>% # sum the three segments per transect
   dplyr::filter(category == 'SUBSTRATE') %>%
-  dplyr::group_by(year, month, day, site, subsite, zone, transect, transect_ID, classcode) %>% # group by replicate transect
+  dplyr::group_by(year, month, day, site, subsite, transect_ID, classcode) %>% # group by replicate transect
   dplyr::summarise(count = sum(count)) %>% 
   dplyr::mutate(proportion = count / sum(count)) 
 
 # Check that all proportions add to one.
-# upc_substrate %>%
-#   group_by(transect_ID) %>%
-#   summarise(prop_sum = sum(proportion)) %>%
-#   filter(!prop_sum == 1) # zero rows do not equal one.
+upc_substrate %>%
+  group_by(transect_ID) %>%
+  summarise(prop_sum = sum(proportion)) %>%
+  filter(!prop_sum == 1) # zero rows do not equal one. yay
 
-# # Proportion of substrates at all sites, not separated by year
-# upc_substrate %>% 
-#   # dplyr::group_by(site, classcode) %>% 
-#   # dplyr::summarise(mean_prop = mean(proportion), n = n()) %>% 
-#   ggplot(aes(x = classcode, y = proportion)) +
-#   facet_wrap(~site) +
-#   geom_boxplot() +
-#   ggtitle('Proportion of substrates in UPC surveys all years') +
-#   scale_y_continuous(limits = c(0,1)) +
-#   theme(axis.text.x = element_text(angle = 55, vjust = 1, hjust = 1))
+# Proportion of substrates at all sites, not separated by year
+upc_substrate %>%
+  # dplyr::group_by(site, classcode) %>%
+  # dplyr::summarise(mean_prop = mean(proportion), n = n()) %>%
+  ggplot(aes(x = classcode, y = proportion)) +
+  facet_wrap(~site) +
+  geom_boxplot() +
+  ggtitle('Proportion of substrates in UPC surveys all years') +
+  scale_y_continuous(limits = c(0,1)) +
+  theme(axis.text.x = element_text(angle = 55, vjust = 1, hjust = 1))
 
 # Stacked column chart
 upc_substrate %>% 
@@ -149,10 +148,10 @@ upc_substrate %>%
 # add up the counts in each transect
 upc_rugosity <- upc %>%
   dplyr::filter(category == 'RELIEF') %>% 
-  dplyr::group_by(year, month, day, site, subsite, region, zone, transect, transect_ID, category, classcode) %>%
+  dplyr::group_by(year, month, day, site, subsite, transect_ID, category, classcode) %>%
   dplyr::summarise(count = sum(count)) %>% # sum the three segments per transect
   dplyr::mutate(classcode = factor(classcode, levels = c('0-10cm',  '10cm-1m', '1m-2m', '>2m'))) %>% 
-  dplyr::group_by(year, month, day, site, subsite, zone, transect, transect_ID, classcode) %>% # group by replicate transect
+  dplyr::group_by(year, month, day, site, subsite, transect_ID, classcode) %>% # group by replicate transect
   dplyr::summarise(count = sum(count)) %>% 
   dplyr::mutate(proportion = count / sum(count)) 
 
@@ -189,7 +188,7 @@ upc_rugosity %>%
 #   scale_y_continuous(expand = c(0,0), limits = c(0,1.02))+
 #   ggtitle('Total relief proportion in UPC surveys')
 
-# check for changes at FRC and TC
+# check for changes
 upc_rugosity %>% 
   filter(site %in% c('Fort Ross', 'Timber', 'Gerstle', 'Ocean')) %>% 
   ggplot(aes(x = year, y = count, fill = classcode)) +
@@ -214,9 +213,9 @@ upc_rugosity %>%
 # add up the counts in each transect
 upc_cover <- upc %>%
   dplyr::filter(category == 'COVER') %>% 
-  dplyr::group_by(year, month, day, site, subsite, region, zone, transect, transect_ID, category, classcode) %>%
+  dplyr::group_by(year, month, day, site, subsite, transect_ID, category, classcode) %>%
   dplyr::summarise(count = sum(count)) %>% # sum the three segments per transect
-  dplyr::group_by(year, month, day, site, subsite, zone, transect, transect_ID, classcode) %>% # group by replicate transect
+  dplyr::group_by(year, month, day, site, subsite, transect_ID, classcode) %>% # group by replicate transect
   dplyr::summarise(count = sum(count)) %>% 
   dplyr::mutate(proportion = count / sum(count)) 
 
