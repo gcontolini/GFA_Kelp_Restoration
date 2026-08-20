@@ -112,7 +112,7 @@ swath21_totsizes <- swath21 %>%
 swath21_totcounts <- left_join(swath21_mcounts, swath21_totsizes)
 
 glimpse(swath21_totcounts)
-write_csv(swath21_totcounts, 'swath21_totcounts.csv')
+# write_csv(swath21_totcounts, 'swath21_totcounts.csv')
 
 # It should look like our data where there is one row per classcode per transect with all the sizes wider.
 
@@ -121,7 +121,7 @@ write_csv(swath21_totcounts, 'swath21_totcounts.csv')
 ```
 
 ```{r load and format data, include = FALSE}
-swath <- read_csv('GFNMS Swath and KELPUR data entry (all years) - load_to_R.csv') %>% 
+swath <- read_csv('GFNMS Swath and KelpUr data entry (all years) - load_to_R.csv') %>% 
   dplyr::mutate(site = replace(site, site == 'timber', 'Timber')) %>% 
   dplyr::mutate(site = replace(site, site == 'fort_ross', 'Fort Ross')) %>%   
   dplyr::mutate(site = replace(site, site == 'shell_beach', 'Shell Beach')) %>% 
