@@ -135,6 +135,9 @@ swath <- read_csv('GFNMS Swath and KelpUr data entry (all years) - load_to_R.csv
   filter(!(site == 'Ocean' & year == 2025 & month == 09 & day == 10)) %>% # remove 2025-09-10 data from Ocean Cove because it was not collected well due to surge and can't be trusted.
   dplyr::mutate(heading = as.character(heading)) # for joins later
 
+# Identify which are PISCO. This is used to merge with UPC.
+PISCO_transects_22 <- swath %>% filter(PISCO == TRUE) %>% distinct(transect_ID) %>% as.data.frame() %>% filter(!transect_ID == 174)
+
 #### Trying to read directly from Google Sheets. 
 ## It's reading a bunch of variables as lists which is annoying. Figure it out later.
 # swath2 <- range_read("https://docs.google.com/spreadsheets/d/139MfTFri10hTv-wVnzhVEWhzdAjV4wc1wucQArMxgYo/edit?gid=344928460#gid=344928460", sheet = 'load_to_R') %>% # loaded directly from Google Drive
@@ -374,6 +377,8 @@ swath_target_22 <- swath_target_22 %>%
 ```{r calculate density}
 # combine with 2021 PISCO surveys
 swath_target_21 <- bind_rows(swath_target_22, swath21_totcounts) # I want to add these as additional observations, not additional variables, so it's like a rowbind not a column bind.
+
+#**** 
 
 swath_target_den_uncorrected <- swath_target_21 %>% 
    dplyr::mutate(den_per_m = (count / (meters_sampled))) %>% # calculate density in the meters that were actually sampled.
@@ -736,6 +741,10 @@ swath_target_den$year = factor(swath_target_den$year, levels = 2021:2026) # to m
 
 # save this as a .csv, which is what is uploaded onto the GFCBNMS server.
 # write_csv(swath_target_den, 'GFNMS_swath_target_surveys_2022-2025_20260223.csv') # update the date before execution.
+
+# Complete the list of PISCO transects by adding the 2021 surveys to the list.
+PISCO_transects_21 <- swath_target_den %>% filter(year == 2021) %>% distinct(transect_ID)
+PISCO_transects <- bind_rows(PISCO_transects_21, PISCO_transects_22)
 
 ```
 
