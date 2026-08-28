@@ -1918,7 +1918,7 @@ ggplot(size_sums_hk_select %>% uncount(count), aes(x = year, y = size_cm)) + # h
 
 ```
 
-# Nonmetric multidimensional scaling plots showing community dissimilarities
+# Nonmetric multidimensional scaling plots showing community dissimilarities 
 ```{r NMDS set up for algae and inverts, include = FALSE}
 # to visualize how the communities are different
 swath_target_den2 <- swath_target_den %>% 

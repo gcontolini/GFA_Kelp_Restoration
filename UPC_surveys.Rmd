@@ -104,7 +104,8 @@ upc_substrate <- upc %>%
   dplyr::filter(category == 'SUBSTRATE') %>%
   dplyr::group_by(year, month, day, site, subsite, transect_ID, classcode) %>% # group by replicate transect
   dplyr::summarise(count = sum(count)) %>% 
-  dplyr::mutate(proportion = count / sum(count)) 
+  dplyr::mutate(proportion = count / sum(count))  %>% 
+  dplyr::mutate(count_extrap = proportion * 30)
 
 # Check that all proportions add to one.
 upc_substrate %>%
@@ -149,7 +150,7 @@ upc_substrate %>%
 #   theme(axis.text.x = element_text(angle = 55, vjust = 1, hjust = 1))
 ```
 
-```{r rugosity}
+```{r relief}
 # Rugosity proportions
 
 # add up the counts in each transect
@@ -160,7 +161,8 @@ upc_relief <- upc %>%
   dplyr::mutate(classcode = factor(classcode, levels = c('0-10cm',  '10cm-1m', '1m-2m', '>2m'))) %>% 
   dplyr::group_by(year, month, day, site, subsite, transect_ID, classcode) %>% # group by replicate transect
   dplyr::summarise(count = sum(count)) %>% 
-  dplyr::mutate(proportion = count / sum(count)) 
+  dplyr::mutate(proportion = count / sum(count))  %>% 
+  dplyr::mutate(count_extrap = proportion * 30)
 
 # Check that all proportions add to one.
 upc_relief %>%
@@ -218,8 +220,6 @@ upc_relief %>%
 ```
 
 ```{r cover}
-# Rugosity proportions
-
 # add up the counts in each transect
 upc_cover <- upc %>%
   dplyr::filter(category == 'COVER') %>% 
@@ -227,13 +227,14 @@ upc_cover <- upc %>%
   dplyr::summarise(count = sum(count)) %>% # sum the three segments per transect
   dplyr::group_by(year, month, day, site, subsite, transect_ID, classcode) %>% # group by replicate transect
   dplyr::summarise(count = sum(count)) %>% 
-  dplyr::mutate(proportion = count / sum(count)) 
+  dplyr::mutate(proportion = count / sum(count)) %>% 
+  dplyr::mutate(count_extrap = proportion * 30)
 
-# # Check that all proportions add to one.
-# upc_cover %>% 
-#   group_by(transect_ID) %>% 
-#   summarise(prop_sum = sum(proportion)) %>% 
-#   filter(!prop_sum == 1) # zero rows do not equal one. 
+# Check that all proportions add to one.
+upc_cover %>%
+  group_by(transect_ID) %>%
+  summarise(prop_sum = sum(proportion)) %>%
+  filter(!prop_sum == 1) # zero rows do not equal one.
 
 # Proportion of cover at Fort Ross
 upc_cover %>% 
@@ -280,15 +281,15 @@ upc_cover %>%
   ggtitle('Proportion of cover in UPC surveys at Shell Beach') +
   theme(axis.text.x = element_text(angle = 55, vjust = 1, hjust = 1))
 
-# # This is how to make stacked bars that add to one
-# upc_rugosity %>%
-#   dplyr::group_by(site, classcode) %>%
-#   dplyr::summarise(count = sum(count)) %>%
-#   dplyr::mutate(proportion = count / sum(count)) %>%
-#   ggplot(aes(x = site, y = proportion, fill = classcode)) +
-#   geom_col() +
-#   scale_y_continuous(expand = c(0,0), limits = c(0,1.02))+
-#   ggtitle('Total relief proportion in UPC surveys')
+# This is how to make stacked bars that add to one
+upc_cover %>%
+  dplyr::group_by(site, classcode) %>%
+  dplyr::summarise(count = sum(count)) %>%
+  dplyr::mutate(proportion = count / sum(count)) %>%
+  ggplot(aes(x = site, y = proportion, fill = classcode)) +
+  geom_col() +
+  scale_y_continuous(expand = c(0,0), limits = c(0,1.02))+
+  ggtitle('Total cover proportion in UPC surveys')
 
 
 ## old code below
@@ -309,11 +310,31 @@ upc_cover %>%
 # Nonmetric multidimensional scaling plots showing community dissimilarities 
 # to visualize how the communities are different
 
-
-upc
+# all these UPC tibbles are QAQCed for completeness in the proportion column. 
+upc_cover
+upc_relief
+upc_substrate
 PISCO_swaths
 
+upc_all <- # all proportions add up! I checked.
+  bind_rows(upc_cover, upc_relief, upc_substrate) %>% 
+  select(!count) %>% 
+  mutate(observations = count_extrap) %>% # make a col of observations that can be merged with PISCO_swaths observations\
+  ungroup() %>% 
+  select(year, month, day, site, transect_ID, classcode, observations)
 
+PISCO_swaths_all <- PISCO_swaths %>% 
+  mutate(observations = den_m2_corrected) %>% 
+  ungroup() %>% 
+  select(year, month, day, site, transect_ID, classcode, observations)
+
+# MERGE THE SWATHS AND UPCS!!!!!!!!!!!!!!!!!
+PISCO_all <- bind_rows(PISCO_swaths_all, upc_all)
+########## THIS IS THE FULLY COMBINED DATASET!!!!!!!!!!!!!!!! ############
+
+
+################## below is copied from subtidal_swath.Rmd #######################                     
+                         
 swath_target_den2 <- swath_target_den %>% 
   ungroup() # so it ungroups all the naming variables
 
