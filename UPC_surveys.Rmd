@@ -68,10 +68,10 @@ tot_upc_site_year <- upc %>%
   dplyr::count(year, site) %>% 
   mutate(survey_type = 'UPC')
 
-# compared with swath inventory. This is from the subtidal_swath.Rmd script.
-PISCO_swath <- swath_target_den %>% filter(transect_ID %in% PISCO_transects$transect_ID)
+# compared with swath inventory. PISCO_swath is from the subtidal_swath.Rmd script.
+PISCO_swaths <- swath_target_den %>% filter(transect_ID %in% PISCO_transects$transect_ID)
 
-tot_PISCO_swaths <- PISCO_swath %>% 
+tot_PISCO_swaths <- PISCO_swaths %>% 
   count(year, site, transect_ID) %>% 
   count(year, site) %>% 
   mutate(survey_type = 'swaths')
@@ -88,11 +88,12 @@ upc %>%
   dplyr::filter(!count == 90) 
 
 # they're all very close to 90 or have a known missing segment so we're all good here :) 
-
 ```
 
-```{r inventory of surveys}
-tot_upc_site_year %>% flextable()
+```{r complete incomplete surveys}
+# some surveys did not finish, and some have missing or extra points. I think we can resolve this by forcing all surveys into 30 observations in each category based on proportions.
+
+
 ```
 
 ```{r substrate}
@@ -152,7 +153,7 @@ upc_substrate %>%
 # Rugosity proportions
 
 # add up the counts in each transect
-upc_rugosity <- upc %>%
+upc_relief <- upc %>%
   dplyr::filter(category == 'RELIEF') %>% 
   dplyr::group_by(year, month, day, site, subsite, transect_ID, category, classcode) %>%
   dplyr::summarise(count = sum(count)) %>% # sum the three segments per transect
@@ -161,21 +162,24 @@ upc_rugosity <- upc %>%
   dplyr::summarise(count = sum(count)) %>% 
   dplyr::mutate(proportion = count / sum(count)) 
 
-# # Check that all proportions add to one.
-# upc_rugosity %>%
-#   group_by(transect_ID) %>%
-#   summarise(prop_sum = sum(proportion)) %>%
-#   filter(!prop_sum == 1) # zero rows do not equal one.
+# Check that all proportions add to one.
+upc_relief %>%
+  group_by(transect_ID) %>%
+  summarise(prop_sum = sum(proportion)) %>%
+  filter(!prop_sum == 1) # zero rows do not equal one.
+
+# Fort Ross has NA values. Fix them.
+upc_relief %>% filter(is.na(classcode)) #*** Two reliefs are NA. Probably 10cm-1m but not totally sure.
 
 # Proportion at all sites, not separated by year
 
-upc_rugosity %>% 
+upc_relief %>% 
   ggplot(aes(x = site, y = count, fill = classcode)) +
   geom_col() +
   theme(axis.text.x = element_text(angle = 55, vjust = 1, hjust = 1))
 
 # ## boxplots
-# upc_rugosity %>% 
+# upc_relief %>% 
 #   # dplyr::group_by(site, classcode) %>% 
 #   # dplyr::summarise(mean_prop = mean(proportion), n = n()) %>% 
 #   ggplot(aes(x = classcode, y = proportion)) +
@@ -185,7 +189,7 @@ upc_rugosity %>%
 #   theme(axis.text.x = element_text(angle = 55, vjust = 1, hjust = 1))
 
 # # This is how to make stacked bars that add to one
-# upc_rugosity %>%
+# upc_relief %>%
 #   dplyr::group_by(site, classcode) %>%
 #   dplyr::summarise(count = sum(count)) %>%
 #   dplyr::mutate(proportion = count / sum(count)) %>%
@@ -195,7 +199,7 @@ upc_rugosity %>%
 #   ggtitle('Total relief proportion in UPC surveys')
 
 # check for changes
-upc_rugosity %>% 
+upc_relief %>% 
   filter(site %in% c('Fort Ross', 'Timber', 'Gerstle', 'Ocean')) %>% 
   ggplot(aes(x = year, y = count, fill = classcode)) +
   facet_wrap(~site) +
@@ -203,7 +207,7 @@ upc_rugosity %>%
   theme(axis.text.x = element_text(angle = 55, vjust = 1, hjust = 1))
   
 # #box plots
-# upc_rugosity %>% 
+# upc_relief %>% 
 #   filter(site %in% c('Fort Ross', 'Timber')) %>% 
 #   ggplot(aes(x = classcode, y = proportion)) +
 #   facet_grid(site ~ year) +
@@ -298,4 +302,119 @@ upc_cover %>%
 #   geom_col() +
 #   scale_y_continuous(expand = c(0,0), limits = c(0,1.02))+
 #   ggtitle('Total cover proportion in UPC surveys')
+```
+
+# Combine UPC and swaths in full analysis of all data taken!
+```{r combine UPC and swaths}
+# Nonmetric multidimensional scaling plots showing community dissimilarities 
+# to visualize how the communities are different
+
+
+upc
+PISCO_swaths
+
+
+swath_target_den2 <- swath_target_den %>% 
+  ungroup() # so it ungroups all the naming variables
+
+# Next what I probably want to do is check how many surveys were done per transect, and for the community analyses, only use transects with all three surveys. I mean with at least three, and hopefully they include algae and invert and either kelpur or abu. Hm but I should check what surveys were done when there were three just to be sure.
+
+# only use transects that had all three survey types done because then you know you have the full community.
+full_transects <- swath_target_den2 %>% 
+  filter(!survey_type %in% c('KELPUR-GFA', 'URCHIN')) %>% #these were done separately, apart from full community analyses
+  # filter(year %in% 2022:2025) %>% # set the years
+  dplyr::count(transect_ID, survey_type) %>% 
+  ungroup() %>% 
+  dplyr::count(transect_ID) %>% 
+  dplyr::filter(n == 3) %>% 
+  dplyr::select(transect_ID)
+  # only use these transects in community analyses.
+full_transects <- as.data.frame(full_transects)[,1] # now it's just a vector of numbers. There are 92 full transects from 2022 to 2025.
+
+# Check the survey types we're working with here 
+# swath_target_den2 %>% filter(transect_ID %in% full_transects) %>% select(survey_type) %>% distinct(). #AbU, KELPUR, invert, algae. Great!
+
+swath_target_den_full_transects <- swath_target_den2 %>% 
+  select(!survey_type) %>% 
+  dplyr::filter(transect_ID %in% full_transects) # This data frame has only the transects with full community data. NMDS analysis can proceed!
+
+swath_target_den %>%
+  count(transect_ID, classcode) %>%
+  filter(n > 1) #YES NONE HAVE MORE THAN ONE 0BSERVATION!!!!!!!!
+
+# Reformatting the data frame for the analysis. cols need to be classcodes.
+swath_matrix_counts <- swath_target_den_full_transects %>% 
+  # dplyr::filter(site %in% c('Fort Ross', 'Timber', 'Gerstle', 'pebble_beach')) %>% 
+  select(transect_ID, classcode, den_m2_corrected) %>% # "den_m2_corrected" is the only quantification of species that is corrected for the actual area surveyed (standardized by area). The raw counts are over different areas, which is why I'm using density for the NMDS.
+  # I want each col to be a species, rows to be IDs, and values to be densities.
+  pivot_wider(names_from = 'classcode', values_from = 'den_m2_corrected') # I don't understand why there are NA values because I spent a whole lot of code above adding back implicit zeros. Whatever. 
+
+swath_matrix_counts$transect_ID = NULL # remove transect_ID column
+# Do I need to make NAs into 0s? I think so.
+swath_matrix_counts0 <- swath_matrix_counts %>% replace(is.na(.), 0)
+swath_matrix_counts0 <- as.data.frame(swath_matrix_counts0)
+
+## Convert absolute abundance to relative abundance to standardize
+# Aren't they already standardized? I mean they're all in number per m2. That feels standardized. Well Maria says to do this.
+swath_matrix_counts0_decostand <- decostand(swath_matrix_counts0, method = 'total')
+
+set.seed(19900118) # set seed to make sure the metaMDS repeats a best solution.
+MDS1_decostand <- metaMDS(swath_matrix_counts0_decostand, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.07.
+
+## reformat so it can be plotted in ggplot with groupings.
+data_scores <- as.data.frame(scores(MDS1_decostand)$sites)
+
+## Add back identifier columns
+data_scores$transect_ID = unique(swath_target_den_full_transects$transect_ID) 
+
+# i want to join this with the sites and dates and stuff.
+swath_target_den_sites <- swath_target_den_full_transects %>%
+  # dplyr::filter(site %in% c('Fort Ross', 'Timber')) %>% # just frc and tc
+  dplyr::select(transect_ID, site, subsite, year, month, day) # just these cols
+swath_target_den_sites <- swath_target_den_sites[!duplicated(swath_target_den_sites),] # remove duplicate rows 
+dim(swath_target_den_sites) # check dimensions. Should be 92 rows
+
+NMDS_sites <- dplyr::left_join(data_scores, swath_target_den_sites, by = 'transect_ID') 
+rownames(swath_matrix_counts0_decostand) = paste(NMDS_sites$site, NMDS_sites$transect_ID)
+
+# MDS1 <- metaMDS(swath_matrix_counts0, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.1799.
+
+# plots using base R
+# ordiplot(MDS1_decostand, type = 'n')
+# orditorp(MDS1_decostand, display = 'species', col = 'orchid4') # displays the species
+# orditorp(MDS1_decostand, display = 'sites') # displays the sites
+  
+```
+
+```{r fig.cap = 'Community dissimilarities (Bray-Curtis) among subtidal swath transects at all sites. Species vectors shown for significant species only (P < 0.05)'}
+# Prepping the species vectors
+spp_fit <- envfit(MDS1_decostand, swath_matrix_counts0_decostand, permutations = 999) # there were 50+ warnings bc SD = 0.
+spp_scores <- as.data.frame(scores(spp_fit, display = 'vectors'))
+spp_scores <- cbind(spp_scores, species = rownames(spp_scores))
+spp_scores <- cbind(spp_scores, pval = spp_fit$vectors$pvals)
+sig_spp_scores <- subset(spp_scores, pval <= 0.05) %>% arrange(pval)
+sig_spp_scores$site = 'Timber' # just put one so it plots
+sig_spp_scores$year = '2022' # just put one so it plots
+# reposition the overlapping species labels
+sig_spp_scores$NMDS1_label = sig_spp_scores$NMDS1
+sig_spp_scores$NMDS2_label = sig_spp_scores$NMDS2
+# sig_spp_scores$NMDS1_label[which(sig_spp_scores$species == 'LAMREC')] = 0.65 
+# sig_spp_scores$NMDS2_label[which(sig_spp_scores$species == 'LAMREC')] = -0.4
+# sig_spp_scores$NMDS1_label[which(sig_spp_scores$species == 'PTECALJUV')] = 0.65
+# sig_spp_scores$NMDS2_label[which(sig_spp_scores$species == 'PTECALJUV')] = -0.45
+# sig_spp_scores$NMDS1_label[which(sig_spp_scores$species == 'LAMFAR')] = 0.65
+# sig_spp_scores$NMDS2_label[which(sig_spp_scores$species == 'LAMFAR')] = -0.5
+# sig_spp_scores$NMDS1_label[which(sig_spp_scores$species == 'COSCOS')] = 0.65
+# sig_spp_scores$NMDS2_label[which(sig_spp_scores$species == 'COSCOS')] = -0.55
+
+ggplot(NMDS_sites, aes(x = NMDS1, y = NMDS2, color = site, shape = year)) +
+  # stat_ellipse() +
+  annotate('text', x = 2, y = 1.2, label = paste('Stress =', round(MDS1_decostand$stress, digits = 3))) +
+  ggtitle('Swath community dissimilarities') +
+  geom_segment(data = sig_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
+  geom_point(size = 3, alpha = 0.7) +
+  annotate('text', size = 3, x = sig_spp_scores$NMDS1_label, y = sig_spp_scores$NMDS2_label, label = sig_spp_scores$species, color = 'grey60') +
+  my_theme +
+  theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12))
+
 ```
