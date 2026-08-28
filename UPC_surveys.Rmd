@@ -45,7 +45,7 @@ theme_set(theme(
 ```
 
 ```{r read in data}
-upc <- read_csv('GFNMS UPC data entry (all years) - load_to_R.csv') %>% 
+upc <- read_csv('GFNMS UPC data entry (all years) - load_to_R.csv') %>% #downloaded on 2026-08-28
   dplyr::mutate(site = replace(site, site == 'timber', 'Timber')) %>% 
   dplyr::mutate(site = replace(site, site == 'fort_ross', 'Fort Ross')) %>%   
   dplyr::mutate(site = replace(site, site == 'shell_beach', 'Shell Beach')) %>% 
@@ -66,13 +66,19 @@ upc$year = as.factor(upc$year)
 tot_upc_site_year <- upc %>% 
   dplyr::count(year, site, transect_ID) %>% 
   dplyr::count(year, site) %>% 
-  mutate(survey_type = 'UPC') %>% 
-  rename(N_yr = n)
+  mutate(survey_type = 'UPC')
 
-# # compared with swath inventory. This is from the subtidal_swath.Rmd scrpt.
-# full_join(tot_survey_site_year, tot_upc_site_year) %>% 
-#   arrange(year, site) %>% 
-#   flextable()
+# compared with swath inventory. This is from the subtidal_swath.Rmd script.
+PISCO_swath <- swath_target_den %>% filter(transect_ID %in% PISCO_transects$transect_ID)
+
+tot_PISCO_swaths <- PISCO_swath %>% 
+  count(year, site, transect_ID) %>% 
+  count(year, site) %>% 
+  mutate(survey_type = 'swaths')
+
+full_join(tot_PISCO_swaths, tot_upc_site_year) %>%
+  arrange(year, site) %>%
+  flextable()
 
 # check that there are 90 observations per transect (30 for substrate, 30 for relief, 30 for cover. Exclude superlayer for this check)..
 upc %>% 
