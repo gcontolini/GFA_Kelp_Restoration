@@ -329,64 +329,55 @@ PISCO_swaths_all <- PISCO_swaths %>%
   select(year, month, day, site, transect_ID, classcode, observations)
 
 # MERGE THE SWATHS AND UPCS!!!!!!!!!!!!!!!!!
-PISCO_all <- bind_rows(PISCO_swaths_all, upc_all)
+PISCO_all <- bind_rows(PISCO_swaths_all, upc_all) %>% 
+  arrange(year, month, day, site, transect_ID, classcode)
+```
+
+```{r THE FULLY COMBINED DATASET, include = FALSE}
 ########## THIS IS THE FULLY COMBINED DATASET!!!!!!!!!!!!!!!! ############
+write_csv(PISCO_all, 'PISCO_2021-2025.csv') #*** 
+```
 
-
-################## below is copied from subtidal_swath.Rmd #######################                     
+```{r NMDS analysis with fully combined dataset}
+################## much of below is copied from subtidal_swath.Rmd #######################   
+### and now I attempt to do the same analysis with this fuller dataset that includes UPC observations ###
                          
-swath_target_den2 <- swath_target_den %>% 
-  ungroup() # so it ungroups all the naming variables
+# check if each transect ID has a all types of surveys done. so check for strpur, nerlue, ptecalad, atmin, bedrk, 10cm-1m. 
+PISCO_all %>% 
+  filter(classcode %in% c('STRPUR', 'NERLUE', 'PATMIN', 'PTECALAD', 'BEDRK', '10cm-1m')) %>% 
+  count(year, site, transect_ID) %>% 
+  filter(!n == 6) #lookin good. the ones with only 5 obseravtions just didn't have a UPC classcode since I didn't include implicit zeros for those yet.
 
-# Next what I probably want to do is check how many surveys were done per transect, and for the community analyses, only use transects with all three surveys. I mean with at least three, and hopefully they include algae and invert and either kelpur or abu. Hm but I should check what surveys were done when there were three just to be sure.
-
-# only use transects that had all three survey types done because then you know you have the full community.
-full_transects <- swath_target_den2 %>% 
-  filter(!survey_type %in% c('KELPUR-GFA', 'URCHIN')) %>% #these were done separately, apart from full community analyses
-  # filter(year %in% 2022:2025) %>% # set the years
-  dplyr::count(transect_ID, survey_type) %>% 
-  ungroup() %>% 
-  dplyr::count(transect_ID) %>% 
-  dplyr::filter(n == 3) %>% 
-  dplyr::select(transect_ID)
-  # only use these transects in community analyses.
-full_transects <- as.data.frame(full_transects)[,1] # now it's just a vector of numbers. There are 92 full transects from 2022 to 2025.
-
-# Check the survey types we're working with here 
-# swath_target_den2 %>% filter(transect_ID %in% full_transects) %>% select(survey_type) %>% distinct(). #AbU, KELPUR, invert, algae. Great!
-
-swath_target_den_full_transects <- swath_target_den2 %>% 
-  select(!survey_type) %>% 
-  dplyr::filter(transect_ID %in% full_transects) # This data frame has only the transects with full community data. NMDS analysis can proceed!
-
-swath_target_den %>%
+PISCO_all %>%
   count(transect_ID, classcode) %>%
-  filter(n > 1) #YES NONE HAVE MORE THAN ONE 0BSERVATION!!!!!!!!
+  filter(n > 1) #ok STEOSM has multiple observations for one of the transects because it was observed in both algae swath and UPC. That prevents the matrix from forming properly, so I'm going to remove it from the UPC and think about this later.
+PISCO_all <- PISCO_all[-which(PISCO_all$transect_ID==38 & PISCO_all$classcode == 'STEOSM' & PISCO_all$observations == 1),]
 
 # Reformatting the data frame for the analysis. cols need to be classcodes.
-swath_matrix_counts <- swath_target_den_full_transects %>% 
-  # dplyr::filter(site %in% c('Fort Ross', 'Timber', 'Gerstle', 'pebble_beach')) %>% 
-  select(transect_ID, classcode, den_m2_corrected) %>% # "den_m2_corrected" is the only quantification of species that is corrected for the actual area surveyed (standardized by area). The raw counts are over different areas, which is why I'm using density for the NMDS.
-  # I want each col to be a species, rows to be IDs, and values to be densities.
-  pivot_wider(names_from = 'classcode', values_from = 'den_m2_corrected') # I don't understand why there are NA values because I spent a whole lot of code above adding back implicit zeros. Whatever. 
+PISCO_all_matrix <- PISCO_all %>% 
+  select(transect_ID, classcode, observations) %>% 
+  # I want each col to be a classcode, rows to be IDs, and values to be observations.
+  pivot_wider(names_from = 'classcode', values_from = 'observations') %>% 
+  replace(is.na(.), 0) %>% # make any NA value into 0.
+  as.data.frame()
 
-swath_matrix_counts$transect_ID = NULL # remove transect_ID column
-# Do I need to make NAs into 0s? I think so.
-swath_matrix_counts0 <- swath_matrix_counts %>% replace(is.na(.), 0)
-swath_matrix_counts0 <- as.data.frame(swath_matrix_counts0)
+PISCO_all_matrix$transect_ID = NULL # remove transect_ID column
+
 
 ## Convert absolute abundance to relative abundance to standardize
 # Aren't they already standardized? I mean they're all in number per m2. That feels standardized. Well Maria says to do this.
-swath_matrix_counts0_decostand <- decostand(swath_matrix_counts0, method = 'total')
+PISCO_all_matrix_decostand <- decostand(PISCO_all_matrix, method = 'total')
 
-set.seed(19900118) # set seed to make sure the metaMDS repeats a best solution.
-MDS1_decostand <- metaMDS(swath_matrix_counts0_decostand, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.07.
+set.seed(19918) # set seed to make sure the metaMDS repeats a best solution.
+MDS1_PISCO_all <- metaMDS(PISCO_all_matrix_decostand, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.07.
 
 ## reformat so it can be plotted in ggplot with groupings.
-data_scores <- as.data.frame(scores(MDS1_decostand)$sites)
+data_scores <- as.data.frame(scores(MDS1_PISCO_all)$sites)
 
 ## Add back identifier columns
-data_scores$transect_ID = unique(swath_target_den_full_transects$transect_ID) 
+data_scores$transect_ID = unique(PISCO_all$transect_ID) 
+
+#*** Bookmark. pick up here trying to add the metadata back to the MDS. #***
 
 # i want to join this with the sites and dates and stuff.
 swath_target_den_sites <- swath_target_den_full_transects %>%
