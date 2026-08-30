@@ -1922,6 +1922,7 @@ ggplot(size_sums_hk_select %>% uncount(count), aes(x = year, y = size_cm)) + # h
 ```{r NMDS set up for algae and inverts, include = FALSE}
 # to visualize how the communities are different
 swath_target_den2 <- swath_target_den %>% 
+  filter(year %in% c(2021, 2022, 2024, 2025)) %>% # just these years for now
   ungroup() # so it ungroups all the naming variables
 
 # Next what I probably want to do is check how many surveys were done per transect, and for the community analyses, only use transects with all three surveys. I mean with at least three, and hopefully they include algae and invert and either kelpur or abu. Hm but I should check what surveys were done when there were three just to be sure.
@@ -1945,7 +1946,7 @@ swath_target_den_full_transects <- swath_target_den2 %>%
   select(!survey_type) %>% 
   dplyr::filter(transect_ID %in% full_transects) # This data frame has only the transects with full community data. NMDS analysis can proceed!
 
-swath_target_den %>%
+swath_target_den_full_transects %>%
   count(transect_ID, classcode) %>%
   filter(n > 1) #YES NONE HAVE MORE THAN ONE 0BSERVATION!!!!!!!!
 
