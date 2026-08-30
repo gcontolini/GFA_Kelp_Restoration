@@ -338,10 +338,11 @@ PISCO_all <- bind_rows(PISCO_swaths_all, upc_all) %>%
 write_csv(PISCO_all, 'PISCO_2021-2025.csv') #*** 
 ```
 
+# NMDS analysis using swath and UPC surveys combined. Should probably make this a separate script.
 ```{r NMDS analysis with fully combined dataset}
 ################## much of below is copied from subtidal_swath.Rmd #######################   
 ### and now I attempt to do the same analysis with this fuller dataset that includes UPC observations ###
-                         
+
 # check if each transect ID has a all types of surveys done. so check for strpur, nerlue, ptecalad, atmin, bedrk, 10cm-1m. 
 PISCO_all %>% 
   filter(classcode %in% c('STRPUR', 'NERLUE', 'PATMIN', 'PTECALAD', 'BEDRK', '10cm-1m')) %>% 
@@ -363,7 +364,6 @@ PISCO_all_matrix <- PISCO_all %>%
 
 PISCO_all_matrix$transect_ID = NULL # remove transect_ID column
 
-
 ## Convert absolute abundance to relative abundance to standardize
 # Aren't they already standardized? I mean they're all in number per m2. That feels standardized. Well Maria says to do this.
 PISCO_all_matrix_decostand <- decostand(PISCO_all_matrix, method = 'total')
@@ -380,22 +380,13 @@ data_scores$transect_ID = unique(PISCO_all$transect_ID)
 #*** Bookmark. pick up here trying to add the metadata back to the MDS. #***
 
 # i want to join this with the sites and dates and stuff.
-swath_target_den_sites <- swath_target_den_full_transects %>%
-  # dplyr::filter(site %in% c('Fort Ross', 'Timber')) %>% # just frc and tc
-  dplyr::select(transect_ID, site, subsite, year, month, day) # just these cols
-swath_target_den_sites <- swath_target_den_sites[!duplicated(swath_target_den_sites),] # remove duplicate rows 
-dim(swath_target_den_sites) # check dimensions. Should be 92 rows
+PISCO_all_sites <- PISCO_all %>%
+  dplyr::select(transect_ID, site, year, month, day) # just these cols
+# PISCO_all_sites <- PISCO_all_sites[!duplicated(PISCO_all_sites),] # remove duplicate rows 
+dim(PISCO_all_sites) # check dimensions. 6675 rows.
 
-NMDS_sites <- dplyr::left_join(data_scores, swath_target_den_sites, by = 'transect_ID') 
-rownames(swath_matrix_counts0_decostand) = paste(NMDS_sites$site, NMDS_sites$transect_ID)
-
-# MDS1 <- metaMDS(swath_matrix_counts0, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.1799.
-
-# plots using base R
-# ordiplot(MDS1_decostand, type = 'n')
-# orditorp(MDS1_decostand, display = 'species', col = 'orchid4') # displays the species
-# orditorp(MDS1_decostand, display = 'sites') # displays the sites
-  
+PISCO_all_NMDS_sites <- dplyr::left_join(data_scores, PISCO_all_sites, by = 'transect_ID') 
+rownames(PISCO_all_matrix_decostand) = paste(PISCO_all_NMDS_sites$site, PISCO_all_NMDS_sites$transect_ID)
 ```
 
 ```{r fig.cap = 'Community dissimilarities (Bray-Curtis) among subtidal swath transects at all sites. Species vectors shown for significant species only (P < 0.05)'}
