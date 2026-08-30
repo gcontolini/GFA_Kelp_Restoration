@@ -132,6 +132,23 @@ ggplot(PISCO_all_ms_NMDS_sites, aes(x = NMDS1, y = NMDS2, color = site, shape = 
 ```{r SIMPER analysis}
 # Which species are most responsible for any community differences observed? Calculate discriminating species between two groups using BC dissimilarities.
 PISCO_all_ms_simper <- simper(PISCO_all_ms_matrix_decostand, group = PISCO_all_ms_NMDS_sites$site)
+summary(PISCO_all_ms_simper)
+PISCO_all_ms_simper
+
+# The top contributors are:
+## STRPUR for all contrasts
+## BEDRK and 10cm-1m for 2nd place overall
+## >2, BEDRK, 10cm-1m in 3rd place overall
+## ENCRED, BEDRK, >2 in 4th place
+## BOULD, ENCRED in 5th place
+
+# Contrasts I care most about:
+# Timber Cove vs. Ocean Cove
+summary(PISCO_all_ms_simper)[4]$Timber_Ocean %>% 
+  round(digits = 4) %>% 
+  slice_head(n = 10) %>% 
+  rownames_to_column() %>% 
+  flextable()#Timber vs. Ocean
 
 ```
 
