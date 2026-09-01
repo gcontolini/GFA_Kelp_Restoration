@@ -20,6 +20,7 @@ library(car) #companion to applied regression
 library(tidyverse) # all tidyverse packages including tidyr, dplyr, and ggplot2
 library(ggpubr) # plot aesthetics
 library(flextable) # tidy display table package
+library(vegan)
 
 #### Create plot theme ####
 theme_set(theme( 
@@ -50,12 +51,14 @@ PISCO_all_ms <- PISCO_all %>%
   filter(site %in% c('Fort Ross', 'Timber', 'Ocean', 'Gerstle')) %>% 
   filter(year %in% c(2021, 2022, 2024, 2025))
 
-```
+PISCO_ms_bio <- PISCO_all_ms %>% 
+  filter(!classcode %in% c("BEDRK", "BOULD", "SAND", "COB",' 0-10cm', '10cm-1m', '1m-2m', '>2m' )) #remove relief and substrate bc idk what that's about yet.
 
+```
 
 # NMDS analysis using swath and UPC surveys combined. 
 ```{r set up and run metaMDS}
-################## much of below is copied from subtidal_swath.Rmd #######################   
+################ much of below is copied from subtidal_swath.Rmd ################  
 ### and now I attempt to do the same analysis with this fuller dataset that includes UPC observations ###
 
 # check if each transect ID has a all types of surveys done. so check for strpur, nerlue, ptecalad, atmin, bedrk, 10cm-1m. 
