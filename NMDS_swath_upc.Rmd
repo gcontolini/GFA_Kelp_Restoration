@@ -275,4 +275,60 @@ ggplot(PISCO_bio_ms_NMDS_sites, aes(x = NMDS1, y = NMDS2, color = site, shape = 
   scale_color_manual(values = viridis) +
   pres_theme
 
+# NMDS plot with just some sites
+ggplot(PISCO_bio_ms_NMDS_sites %>% filter(site %in% c('Timber')), aes(x = NMDS1, y = NMDS2, color = site, shape = year)) +
+  stat_ellipse() +
+  # annotate('text', x = 2, y = 1.2, label = paste('Stress =', round(PISCO_bio_ms_MDS1$stress, digits = 3))) +
+  # ggtitle('Swath and UPC community dissimilarities') +
+  geom_segment(data = sig_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
+  geom_point(size = 5, alpha = 0.7) +
+  annotate('text', size = 3, x = sig_spp_scores$NMDS1_label, y = sig_spp_scores$NMDS2_label, label = sig_spp_scores$species, color = 'grey60') +
+  theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12)) +
+  scale_color_manual(values = viridis[2]) +
+  pres_theme
+```
+
+```{r SIMPER analysis swath and bio UPC}
+# Which species are most responsible for any community differences observed? Calculate discriminating species between two groups using BC dissimilarities.
+PISCO_bio_ms_simper <- simper(PISCO_bio_ms_matrix_decostand, group = PISCO_bio_ms_NMDS_sites$site)
+summary(PISCO_bio_ms_simper)
+PISCO_bio_ms_simper
+
+# The top contributors are:
+## STRPUR always in top 2
+## ENCRED always in top 2
+## CRUCOR 
+## BARSAN
+## BARROC
+## DESSPP
+## BARNAC
+## PTECALAD
+
+# Contrasts I care most about:
+# FR Cove vs. Timber Cove
+summary(PISCO_bio_ms_simper)[1]$`Fort Ross_Timber` %>% 
+  round(digits = 4) %>% 
+  slice_head(n = 10) %>% 
+  rownames_to_column() %>% 
+  flextable() %>% 
+  flextable::set_caption("FRC vs TC")
+
+  flextable::set_caption("FRC vs TC")
+
+# FRC vs GC
+summary(PISCO_bio_ms_simper)[3]$`Fort Ross_Gerstle` %>% 
+  round(digits = 4) %>% 
+  slice_head(n = 10) %>% 
+  rownames_to_column() %>% 
+  flextable() %>% 
+  flextable::set_caption("FRC vs GC")
+  
+# Timber Cove vs. Ocean Cove
+summary(PISCO_bio_ms_simper)[4]$Timber_Ocean %>% 
+  round(digits = 4) %>% 
+  slice_head(n = 10) %>% 
+  rownames_to_column() %>% 
+  flextable() %>% 
+  flextable::set_caption("TC vs OC")
+
 ```
