@@ -40,6 +40,19 @@ theme_set(theme(
    plot.title = element_text(size = 15)
    #legend.key = element_blank()
 ))
+
+# fig theme with big text for presentation
+pres_theme <- 
+  theme(
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 24),
+    legend.title = element_text(size = 24), 
+    legend.text = element_text(size = 20)
+  )
+
+# Okabe-Ito color palette
+okabeito <- c('#56B4E9', '#009E73', '#f0E442', '#E69F00') #https://datavizf24.classes.andrewheiss.com/resource/colors.html
+viridis <- pal_viridis(begin = 0, end = 1)(4)
 ```
 
 ```{r Load curated data}
@@ -48,16 +61,18 @@ theme_set(theme(
 PISCO_all <- read_csv('PISCO_2021-2025.csv')
 
 PISCO_all_ms <- PISCO_all %>% 
+  mutate(site = as.factor(site)) %>% 
   filter(site %in% c('Fort Ross', 'Timber', 'Ocean', 'Gerstle')) %>% 
-  filter(year %in% c(2021, 2022, 2024, 2025))
+  filter(year %in% c(2021, 2022, 2024, 2025)) %>% 
+  mutate(site = factor(site, levels = c('Fort Ross', 'Timber', 'Gerstle', 'Ocean')))
 
-PISCO_ms_bio <- PISCO_all_ms %>% 
-  filter(!classcode %in% c("BEDRK", "BOULD", "SAND", "COB",' 0-10cm', '10cm-1m', '1m-2m', '>2m' )) #remove relief and substrate bc idk what that's about yet.
+PISCO_bio_ms <- PISCO_all_ms %>% 
+  filter(!classcode %in% c("BEDRK", "BOULD", "SAND", "COB", '0-10cm', '10cm-1m', '1m-2m', '>2m' )) #remove relief and substrate bc idk what that's about yet.
 
 ```
 
-# NMDS analysis using swath and UPC surveys combined. 
-```{r set up and run metaMDS}
+# Multivariate analyses using all swath and UPC surveys combined. 
+```{r set up and run metaMDS all swath and UPC}
 ################ much of below is copied from subtidal_swath.Rmd ################  
 ### and now I attempt to do the same analysis with this fuller dataset that includes UPC observations ###
 
@@ -105,7 +120,7 @@ PISCO_all_ms_NMDS_sites <- dplyr::inner_join(PISCO_all_ms_data_scores, PISCO_all
 rownames(PISCO_all_ms_matrix_decostand) = paste(PISCO_all_ms_NMDS_sites$site, PISCO_all_ms_NMDS_sites$transect_ID)
 ```
 
-```{r fig.cap = 'Community dissimilarities (Bray-Curtis) among subtidal swath transects at all sites. Species vectors shown for significant species only (P < 0.05)'}
+```{r fig.cap = 'Community dissimilarities (Bray-Curtis) among subtidal swath and all UPC transects. Species vectors shown for significant species only (P < 0.05)'}
 # Prepping the species vectors
 spp_fit <- envfit(PISCO_all_ms_MDS1, PISCO_all_ms_matrix_decostand, permutations = 999) # there were 50+ warnings bc SD = 0.
 spp_scores <- as.data.frame(scores(spp_fit, display = 'vectors'))
@@ -126,13 +141,11 @@ ggplot(PISCO_all_ms_NMDS_sites, aes(x = NMDS1, y = NMDS2, color = site, shape = 
   geom_segment(data = sig_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
   geom_point(size = 3, alpha = 0.7) +
   annotate('text', size = 3, x = sig_spp_scores$NMDS1_label, y = sig_spp_scores$NMDS2_label, label = sig_spp_scores$species, color = 'grey60') +
-  my_theme +
   theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12))
 
 ```
 
-# Similarity percentages
-```{r SIMPER analysis}
+```{r SIMPER analysis swath and all UPC}
 # Which species are most responsible for any community differences observed? Calculate discriminating species between two groups using BC dissimilarities.
 PISCO_all_ms_simper <- simper(PISCO_all_ms_matrix_decostand, group = PISCO_all_ms_NMDS_sites$site)
 summary(PISCO_all_ms_simper)
@@ -175,8 +188,91 @@ summary(PISCO_all_ms_simper)[4]$Timber_Ocean %>%
 
 ```
 
-# Testing for significance of differences (PERMANOVA, ANOSIM)
-```{r PERMANOVA, ANOSIM}
+```{r PERMANOVA, ANOSIM, all swath and UPC}
 
 ```
 
+# Multivariate analyses using swath and just biotic UPC points combined.
+```{r set up and run metaMDS swath and bio UPC}
+# check if each transect ID has a all types of surveys done. so check for strpur, nerlue, ptecalad, atmin, bedrk, 10cm-1m. 
+PISCO_bio_ms %>% 
+  filter(classcode %in% c('STRPUR', 'NERLUE', 'PATMIN', 'PTECALAD')) %>% 
+  count(year, site, transect_ID) %>% 
+  filter(!n == 4) #lookin good. 
+
+PISCO_bio_ms %>%
+  count(transect_ID, classcode) %>%
+  filter(n > 1) # none have more than one.
+
+# simple figure showing sample sizes
+PISCO_bio_ms %>% 
+  count(year, site, transect_ID) %>% 
+  count(year, site) %>% 
+  ggplot(aes(x = year, y = n, color = site)) +
+  scale_color_manual(values = viridis) + # Okabeito color palette . https://datavizf24.classes.andrewheiss.com/resource/colors.html
+  # scale_color_discrete(palette = 'viridis') + # viridis color palette option
+  geom_point(size = 7, position = position_dodge(0.2)) +
+  geom_line(size = 1.5, position = position_dodge(0.2)) +
+  labs(y = 'Number of transects', x = 'Year') +
+  pres_theme
+  
+# Reformatting the data frame for the analysis. cols need to be classcodes.
+PISCO_bio_ms_matrix <- PISCO_bio_ms %>% 
+  select(transect_ID, classcode, observations) %>% 
+  # I want each col to be a classcode, rows to be IDs, and values to be observations.
+  pivot_wider(names_from = 'classcode', values_from = 'observations') %>% 
+  replace(is.na(.), 0) %>% # make any NA value into 0.
+  as.data.frame()
+
+PISCO_bio_ms_matrix$transect_ID = NULL # remove transect_ID column
+
+## Convert absolute abundance to relative abundance to standardize
+# Aren't they already standardized? I mean they're all in number per m2. That feels standardized. Well Maria says to do this.
+PISCO_bio_ms_matrix_decostand <- decostand(PISCO_bio_ms_matrix, method = 'total') # 78 rows.
+
+set.seed(1917678) # set seed to make sure the metaMDS repeats a best solution.
+PISCO_bio_ms_MDS1 <- metaMDS(PISCO_bio_ms_matrix_decostand, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.15
+
+## reformat so it can be plotted in ggplot with groupings.
+PISCO_bio_ms_data_scores <- as.data.frame(scores(PISCO_bio_ms_MDS1)$sites)
+
+## Add back identifier columns
+PISCO_bio_ms_data_scores$transect_ID = unique(PISCO_bio_ms$transect_ID) 
+
+# i want to join this with the sites and dates and stuff.
+PISCO_bio_ms_sites <- PISCO_bio_ms %>%
+  dplyr::select(transect_ID, site, year, month, day) # just these cols
+dim(PISCO_bio_ms_sites) # check dimensions. 5184 rows. remove duplicates for the join.
+PISCO_bio_ms_sites_distinct <- distinct(PISCO_bio_ms_sites) 
+
+PISCO_bio_ms_NMDS_sites <- dplyr::inner_join(PISCO_bio_ms_data_scores, PISCO_bio_ms_sites_distinct, by = 'transect_ID') %>% 
+  mutate(year = as.factor(year))
+rownames(PISCO_bio_ms_matrix_decostand) = paste(PISCO_bio_ms_NMDS_sites$site, PISCO_bio_ms_NMDS_sites$transect_ID)
+```
+
+```{r fig.cap = 'Community dissimilarities (Bray-Curtis) among subtidal swath and UPC transects with just biological points. Species vectors shown for significant species only (P < 0.05)'}
+# Prepping the species vectors
+spp_fit <- envfit(PISCO_bio_ms_MDS1, PISCO_bio_ms_matrix_decostand, permutations = 999) # there were 50+ warnings bc SD = 0.
+spp_scores <- as.data.frame(scores(spp_fit, display = 'vectors'))
+spp_scores <- cbind(spp_scores, species = rownames(spp_scores))
+spp_scores <- cbind(spp_scores, pval = spp_fit$vectors$pvals)
+sig_spp_scores <- subset(spp_scores, pval <= 0.05) %>% arrange(pval) # this is where it filters for P <= 0.05
+sig_spp_scores$site = 'Timber' # just put one so it plots
+sig_spp_scores$year = '2022' # just put one so it plots
+# reposition the overlapping species labels
+sig_spp_scores$NMDS1_label = sig_spp_scores$NMDS1
+sig_spp_scores$NMDS2_label = sig_spp_scores$NMDS2
+# sig_spp_scores$NMDS1_label[which(sig_spp_scores$species == 'LAMREC')] = 0.65 # format for readjusting labels
+
+ggplot(PISCO_bio_ms_NMDS_sites, aes(x = NMDS1, y = NMDS2, color = site, shape = year)) +
+  stat_ellipse() +
+  # annotate('text', x = 2, y = 1.2, label = paste('Stress =', round(PISCO_bio_ms_MDS1$stress, digits = 3))) +
+  # ggtitle('Swath and UPC community dissimilarities') +
+  geom_segment(data = sig_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
+  geom_point(size = 5, alpha = 0.7) +
+  annotate('text', size = 3, x = sig_spp_scores$NMDS1_label, y = sig_spp_scores$NMDS2_label, label = sig_spp_scores$species, color = 'grey60') +
+  theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12)) +
+  scale_color_manual(values = viridis) +
+  pres_theme
+
+```
