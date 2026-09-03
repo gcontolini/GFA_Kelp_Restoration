@@ -262,15 +262,18 @@ spp_scores <- cbind(spp_scores, species = rownames(spp_scores))
 spp_scores <- cbind(spp_scores, pval = spp_fit$vectors$pvals)
 sig_spp_scores <- subset(spp_scores, pval <= 0.05) %>% arrange(pval) # this is where it filters for P <= 0.05
 sig_spp_scores$site = 'Timber' # just put one so it plots
-sig_spp_scores$year = '2022' # just put one so it plots
+sig_spp_scores$year = '2024' # just put one so it plots
 # reposition the overlapping species labels
 sig_spp_scores$NMDS1_label = sig_spp_scores$NMDS1
 sig_spp_scores$NMDS2_label = sig_spp_scores$NMDS2
 # sig_spp_scores$NMDS1_label[which(sig_spp_scores$species == 'LAMREC')] = 0.65 # format for readjusting labels
 
+# PERMANOVA
+PISCO_bio_ms_adonis_2425 <- adonis2(PISCO_bio_ms_matrix_decostand ~ PISCO_bio_ms_NMDS_sites$site * PISCO_bio_ms_NMDS_sites$year, by = 'terms') # might need to add nesting term? 1|site:transect_ID ???
+
 ggplot(PISCO_bio_ms_NMDS_sites, aes(x = NMDS1, y = NMDS2, color = site, shape = year)) +
   stat_ellipse() +
-  # annotate('text', x = 2, y = 1.2, label = paste('Stress =', round(PISCO_bio_ms_MDS1$stress, digits = 3))) +
+  annotate('text', x = 1.5, y = 1.2, label = paste('Stress =', round(PISCO_bio_ms_MDS1$stress, digits = 3))) +
   # ggtitle('Swath and UPC community dissimilarities') +
   geom_segment(data = sig_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
   geom_point(size = 5, alpha = 0.7) +
