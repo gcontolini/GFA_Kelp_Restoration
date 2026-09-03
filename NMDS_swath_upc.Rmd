@@ -21,6 +21,7 @@ library(tidyverse) # all tidyverse packages including tidyr, dplyr, and ggplot2
 library(ggpubr) # plot aesthetics
 library(flextable) # tidy display table package
 library(vegan)
+library(scales) # for color palette
 
 #### Create plot theme ####
 theme_set(theme( 
@@ -68,7 +69,7 @@ PISCO_all_ms <- PISCO_all %>%
   mutate(site = factor(site, levels = c('Fort_Ross', 'Timber', 'Gerstle', 'Ocean')))
 
 PISCO_bio_ms <- PISCO_all_ms %>% 
-  filter(!classcode %in% c("BEDRK", "BOULD", "SAND", "COB", '0-10cm', '10cm-1m', '1m-2m', '>2m' )) #remove relief and substrate bc idk what that's about yet.
+  filter(!classcode %in% c("BEDRK", "BOULD", "SAND", "COB", '0-10cm', '10cm-1m', '1m-2m', '>2m', 'BARROC', 'BARSAN', 'DEADHOLD', 'SHELL')) #Remove things that aren't species. 
 
 ```
 
@@ -215,10 +216,13 @@ PISCO_bio_ms %>%
   geom_point(size = 7, position = position_dodge(0.2)) +
   geom_line(size = 1.5, position = position_dodge(0.2)) +
   labs(y = 'Number of transects', x = 'Year') +
+  scale_y_continuous(limits = c(0, 10), breaks = seq(0, 10, 2)) +
   pres_theme
   
-PISCO_bio_ms <- PISCO_bio_ms %>% 
-  filter(year %in% c('2024', '2025')) # just the years we have control data.
+#### limit to just years we have control data ####
+PISCO_bio_ms <- PISCO_bio_ms %>%
+  filter(year %in% c('2024', '2025')) # just the years we have control data. Remove this part if you are trying to consider all years.
+########
 
 # Reformatting the data frame for the analysis. cols need to be classcodes.
 PISCO_bio_ms_matrix <- PISCO_bio_ms %>% 
@@ -232,7 +236,9 @@ PISCO_bio_ms_matrix$transect_ID = NULL # remove transect_ID column
 
 ## Convert absolute abundance to relative abundance to standardize
 # Aren't they already standardized? I mean they're all in number per m2. That feels standardized. Well Maria says to do this.
-PISCO_bio_ms_matrix_decostand <- decostand(PISCO_bio_ms_matrix, method = 'total') # 78 rows.
+PISCO_bio_ms_matrix_decostand <- decostand(PISCO_bio_ms_matrix, method = 'total') # 78 rows. total divides everything by row totals. 
+# calculate distances? or is that done in the metaMDS? 
+# avgdist(sample = PISCO_bio_ms_matrix_decostand) # calculates bray-curtis distances a set number of times and reports the average.
 
 set.seed(1917678) # set seed to make sure the metaMDS repeats a best solution.
 PISCO_bio_ms_MDS1 <- metaMDS(PISCO_bio_ms_matrix_decostand, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.15
@@ -269,7 +275,15 @@ sig_spp_scores$NMDS2_label = sig_spp_scores$NMDS2
 # sig_spp_scores$NMDS1_label[which(sig_spp_scores$species == 'LAMREC')] = 0.65 # format for readjusting labels
 
 # PERMANOVA
-PISCO_bio_ms_adonis_2425 <- adonis2(PISCO_bio_ms_matrix_decostand ~ PISCO_bio_ms_NMDS_sites$site * PISCO_bio_ms_NMDS_sites$year, by = 'terms') # might need to add nesting term? 1|site:transect_ID ???
+str(as.dist(PISCO_bio_ms_matrix_decostand)) # make sure the response is a distance matrix (type 'dist'). it's a dataframe.
+PISCO_bio_ms_adonis <- adonis2(PISCO_bio_ms_matrix_decostand ~
+                                 PISCO_bio_ms_NMDS_sites$site *
+                                 PISCO_bio_ms_NMDS_sites$year +
+                        PISCO_bio_ms_NMDS_sites$site/PISCO_bio_ms_NMDS_sites$transect_ID,
+                        by = 'terms') 
+
+# Check if dispersions are similar
+betadisper(PISCO_bio_ms_matrix_decostand, group = PISCO_bio_ms_NMDS_sites$site)
 
 ggplot(PISCO_bio_ms_NMDS_sites, aes(x = NMDS1, y = NMDS2, color = site, shape = year)) +
   stat_ellipse() +
@@ -379,7 +393,9 @@ PISCO_bio_ms_adonis <- adonis2(PISCO_bio_ms_matrix_decostand ~ PISCO_bio_ms_NMDS
 ```
 
 # Site specific analyses
-```{r Fort Ross only; nmds, permanova, simper}
+```{r one site only; nmds, permanova, simper}
+PISCO_bio_ms <- PISCO_all_ms %>% 
+  filter(!classcode %in% c("BEDRK", "BOULD", "SAND", "COB", '0-10cm', '10cm-1m', '1m-2m', '>2m', 'BARROC', 'BARSAN', 'DEADHOLD', 'SHELL')) #Remove things that aren't species. 
 ##### Set the site you want #######
 select_site = 'Timber'
 ####################################
@@ -403,7 +419,7 @@ PISCO_bio_site_matrix$transect_ID = NULL # remove transect_ID column
 ## Convert absolute abundance to relative abundance to standardize
 PISCO_bio_site_matrix_decostand <- decostand(PISCO_bio_site_matrix, method = 'total') #
 
-set.seed(197718) # set seed to make sure the metaMDS repeats a best solution.
+set.seed(1977128) # set seed to make sure the metaMDS repeats a best solution.
 PISCO_bio_site_MDS1 <- metaMDS(PISCO_bio_site_matrix_decostand, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.15
 
 ## reformat so it can be plotted in ggplot with groupings.
@@ -429,7 +445,8 @@ spp_scores <- cbind(spp_scores, pval = spp_fit$vectors$pvals)
 sig_spp_scores <- subset(spp_scores, pval <= 0.05) %>% arrange(pval) # this is where it filters for P <= 0.05
 
 # PERMANOVA
-site_adonis <- adonis2(PISCO_bio_site_matrix_decostand ~ PISCO_bio_site_NMDS_years$year)
+site_adonis <- adonis2(PISCO_bio_site_matrix_decostand ~ PISCO_bio_site_NMDS_years$year) # seems like bray-curtis is the default yay
+# no need to nest transectID in site here because it's only for one site!!
 
 # NMDS plot
 ## diverging color scheme
