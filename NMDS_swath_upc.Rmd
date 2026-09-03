@@ -276,14 +276,24 @@ sig_spp_scores$NMDS2_label = sig_spp_scores$NMDS2
 
 # PERMANOVA
 str(as.dist(PISCO_bio_ms_matrix_decostand)) # make sure the response is a distance matrix (type 'dist'). it's a dataframe.
-PISCO_bio_ms_adonis <- adonis2(PISCO_bio_ms_matrix_decostand ~
+adonis2(PISCO_bio_ms_matrix_decostand ~
                                  PISCO_bio_ms_NMDS_sites$site *
                                  PISCO_bio_ms_NMDS_sites$year +
                         PISCO_bio_ms_NMDS_sites$site/PISCO_bio_ms_NMDS_sites$transect_ID,
                         by = 'terms') 
 
+PISCO_bio_ms_adonis <- adonis2(PISCO_bio_ms_matrix_decostand ~ site * year, 
+                               strata = PISCO_bio_ms_NMDS_sites$site, # accounts for transects nested in sites
+                        data = PISCO_bio_ms_NMDS_sites,
+                        by = 'terms') 
+
 # Check if dispersions are similar
-betadisper(PISCO_bio_ms_matrix_decostand, group = PISCO_bio_ms_NMDS_sites$site)
+site_disper <- betadisper(vegdist(PISCO_bio_ms_matrix_decostand), group = PISCO_bio_ms_NMDS_sites$site) 
+anova(site_disper) # tests if the dispersion is sig dif by site. P = 0.03.
+
+year_disper <- betadisper(vegdist(PISCO_bio_ms_matrix_decostand), group = PISCO_bio_ms_NMDS_sites$year) 
+anova(year_disper) p = 0.2
+
 
 ggplot(PISCO_bio_ms_NMDS_sites, aes(x = NMDS1, y = NMDS2, color = site, shape = year)) +
   stat_ellipse() +
@@ -447,6 +457,8 @@ sig_spp_scores <- subset(spp_scores, pval <= 0.05) %>% arrange(pval) # this is w
 # PERMANOVA
 site_adonis <- adonis2(PISCO_bio_site_matrix_decostand ~ PISCO_bio_site_NMDS_years$year) # seems like bray-curtis is the default yay
 # no need to nest transectID in site here because it's only for one site!!
+onesite_disper <- betadisper(vegdist(PISCO_bio_site_matrix_decostand), PISCO_bio_site_NMDS_years$year) #***
+anova(onesite_disper) # P = 0.1 but pls check.
 
 # NMDS plot
 ## diverging color scheme
