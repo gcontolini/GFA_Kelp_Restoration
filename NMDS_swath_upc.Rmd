@@ -194,7 +194,8 @@ summary(PISCO_all_ms_simper)[4]$Timber_Ocean %>%
 
 # Multivariate analyses using swath and just biotic UPC points combined.
 ```{r set up and run metaMDS swath and bio UPC}
-# check if each transect ID has a all types of surveys done. so check for strpur, nerlue, ptecalad, atmin, bedrk, 10cm-1m. 
+# check if each transect ID has a all types of surveys done. so check for strpur, nerlue, ptecalad, atmin, bedrk, 10cm-1m.
+
 PISCO_bio_ms %>% 
   filter(classcode %in% c('STRPUR', 'NERLUE', 'PATMIN', 'PTECALAD')) %>% 
   count(year, site, transect_ID) %>% 
@@ -216,6 +217,9 @@ PISCO_bio_ms %>%
   labs(y = 'Number of transects', x = 'Year') +
   pres_theme
   
+PISCO_bio_ms <- PISCO_bio_ms %>% 
+  filter(year %in% c('2024', '2025')) # just the years we have control data.
+
 # Reformatting the data frame for the analysis. cols need to be classcodes.
 PISCO_bio_ms_matrix <- PISCO_bio_ms %>% 
   select(transect_ID, classcode, observations) %>% 
@@ -367,6 +371,8 @@ PISCO_bio_ms_simper_results %>%
   geom_point(size = 6) +
   pres_theme + theme(axis.text.x = element_text(size = 15))
 
+# PERMANOVA
+PISCO_bio_ms_adonis <- adonis2(PISCO_bio_ms_matrix_decostand ~ PISCO_bio_ms_NMDS_sites$site * PISCO_bio_ms_NMDS_sites$year, by = 'terms') # might need to add nesting term? 1|site:transect_ID ???
 ```
 
 # Site specific analyses
