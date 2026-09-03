@@ -279,27 +279,6 @@ rownames(PISCO_bio_ms_matrix_decostand) = paste(PISCO_bio_ms_NMDS_sites$site, PI
 ```
 
 ```{r fig.cap = 'Community dissimilarities (Bray-Curtis) among subtidal swath and UPC transects with just biological points. Species vectors shown for significant species only (P < 0.05)'}
-# Prepping the species vectors
-spp_fit <- envfit(PISCO_bio_ms_MDS1, PISCO_bio_ms_matrix_decostand, permutations = 999) # there were 50+ warnings bc SD = 0.
-spp_scores <- as.data.frame(scores(spp_fit, display = 'vectors'))
-spp_scores <- cbind(spp_scores, species = rownames(spp_scores))
-spp_scores <- cbind(spp_scores, pval = spp_fit$vectors$pvals)
-sig_spp_scores <- subset(spp_scores, pval <= 0.05) %>% arrange(pval) # this is where it filters for P <= 0.05
-sig_spp_scores$site = 'Timber' # just put one so it plots
-sig_spp_scores$year = '2024' # just put one so it plots
-# reposition the overlapping species labels
-sig_spp_scores$NMDS1_label = sig_spp_scores$NMDS1
-sig_spp_scores$NMDS2_label = sig_spp_scores$NMDS2
-# sig_spp_scores$NMDS1_label[which(sig_spp_scores$species == 'LAMREC')] = 0.65 # format for readjusting labels
-
-# PERMANOVA
-# str(as.dist(PISCO_bio_ms_matrix_decostand)) # make sure the response is a distance matrix (type 'dist'). it's a dataframe.
-# adonis2(PISCO_bio_ms_matrix_decostand ~
-#                                  PISCO_bio_ms_NMDS_sites$site *
-#                                  PISCO_bio_ms_NMDS_sites$year +
-#                         PISCO_bio_ms_NMDS_sites$site/PISCO_bio_ms_NMDS_sites$transect_ID,
-#                         by = 'terms') 
-
 PISCO_bio_ms_adonis <- adonis2(PISCO_bio_ms_matrix_decostand ~ site * year, 
                                strata = PISCO_bio_ms_NMDS_sites$site, # accounts for transects nested in sites
                         data = PISCO_bio_ms_NMDS_sites,
@@ -311,34 +290,51 @@ PISCO_bio_ms_NMDS_sites <- PISCO_bio_ms_NMDS_sites |>
   mutate(siteyear = paste(site, year))
 siteyear_disper <- betadisper(vegdist(PISCO_bio_ms_matrix_decostand), group = PISCO_bio_ms_NMDS_sites$siteyear) 
 anova(siteyear_disper) # P = 0.0008
-site_disper <- betadisper(vegdist(PISCO_bio_ms_matrix_decostand), group = PISCO_bio_ms_NMDS_sites$site) 
-anova(site_disper) # tests if the dispersion is sig dif by site. P = 0.03.
 
-year_disper <- betadisper(vegdist(PISCO_bio_ms_matrix_decostand), group = PISCO_bio_ms_NMDS_sites$year) 
-anova(year_disper) #p = 0.2
+# Prepping the species vectors
+spp_fit <- envfit(PISCO_bio_ms_MDS1, PISCO_bio_ms_matrix_decostand, permutations = 999) # there were 50+ warnings bc SD = 0.
+spp_scores <- as.data.frame(scores(spp_fit, display = 'vectors'))
+spp_scores <- cbind(spp_scores, species = rownames(spp_scores))
+spp_scores <- cbind(spp_scores, pval = spp_fit$vectors$pvals)
+sig_spp_scores <- subset(spp_scores, pval <= 0.05) %>% arrange(pval) # this is where it filters for P <= 0.05
+sig_spp_scores$site = 'Timber' # just put one so it plots
+sig_spp_scores$year = '2022' # just put one so it plots
+# reposition the overlapping species labels
+sig_spp_scores$NMDS1_label = sig_spp_scores$NMDS1
+sig_spp_scores$NMDS2_label = sig_spp_scores$NMDS2
+# sig_spp_scores$NMDS1_label[which(sig_spp_scores$species == 'LAMREC')] = 0.65 # format for readjusting labels
 
+# Indicator species
+indicators <- multipatt(PISCO_bio_ms_matrix_decostand, PISCO_bio_ms_NMDS_sites$siteyear)
+summary(indicators) # can't figure out how to pull the species, so I'll just manually do it.
+indicator_spp <- c('CORCAL','POMGIB','PHRCAL','BALNUM','LEPSPP','ALAMAR','BARNAC', 'LAMSET','HYDROID', 'NERLUEJUV', 'HALRUF', 'HENLEV', 'HALKAM', 'PISBRE', 'ANTSOL', 'DODSPP', 'PTECALAD', 'NERLUE', 'PTECALJUV', 'LAMREC') # 
+
+## Prepping the species vectors with indicator species
+sig_spp_scores2 <- subset(spp_scores, species %in% c(indicator_spp, 'STRPUR', 'NERLUE'))
+sig_spp_scores2$site = 'Timber' # just put one so it plots
+sig_spp_scores2$year = '2024' # just put one so it plots
+
+# calculate centroid
+centroid <- PISCO_bio_ms_NMDS_sites |> 
+  group_by(site, year, siteyear) |> 
+  summarise(NMDS1 = mean(NMDS1), NMDS2 = mean(NMDS2))
+
+# centroid_pivot <- centroid |> 
+#   select(-siteyear) |> 
+#   pivot_wider(names_from = year, values_from = c(NMDS1, NMDS2))
+
+#NMDS plot 
 ggplot(PISCO_bio_ms_NMDS_sites, aes(x = NMDS1, y = NMDS2, color = site, shape = year)) +
   stat_ellipse() +
   annotate('text', x = 1.5, y = 1.2, label = paste('Stress =', round(PISCO_bio_ms_MDS1$stress, digits = 3))) +
-  # annotate('text', x = 1.5, y = 1, label = paste('P =', round(PISCO_bio_ms_adonis$`Pr(>F)`, digits = 3))) +
-  geom_segment(data = sig_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
-  geom_point(size = 5, alpha = 0.7) +
-  annotate('text', size = 3, x = sig_spp_scores$NMDS1_label, y = sig_spp_scores$NMDS2_label, label = sig_spp_scores$species, color = 'grey60') +
+  geom_segment(data = sig_spp_scores2, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
+  geom_point(size = 4, alpha = 0.7) +
+  annotate('text', size = 3, x = sig_spp_scores2$NMDS1, y = sig_spp_scores2$NMDS2, label = sig_spp_scores2$species, color = 'grey60') +
+  # geom_point(data = centroid, size = 5) +
   theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12)) +
   scale_color_manual(values = viridis) +
   pres_theme
 
-# NMDS plot with just some sites
-ggplot(PISCO_bio_ms_NMDS_sites %>% filter(site %in% c('Fort_Ross')), aes(x = NMDS1, y = NMDS2, color = site, shape = year)) +
-  stat_ellipse() +
-  # annotate('text', x = 2, y = 1.2, label = paste('Stress =', round(PISCO_bio_ms_MDS1$stress, digits = 3))) +
-  # ggtitle('Swath and UPC community dissimilarities') +
-  geom_segment(data = sig_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
-  geom_point(size = 5, alpha = 0.7) +
-  annotate('text', size = 3, x = sig_spp_scores$NMDS1_label, y = sig_spp_scores$NMDS2_label, label = sig_spp_scores$species, color = 'grey60') +
-  theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12)) +
-  scale_color_manual(values = viridis[1]) +
-  pres_theme
 ```
 
 ```{r SIMPER analysis swath and bio UPC}
@@ -511,12 +507,5 @@ ggplot(PISCO_bio_site_NMDS_years, aes(x = NMDS1, y = NMDS2, color = year)) +
   theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12)) +
   scale_color_manual(values = divergent) +
   pres_theme
-
-```
-# However, SIMPER doesn't indicate which group a species was more strongly associated with; see Indicator Species Analysis for that.
-
-```{r indicator species analysis}
-summary(multipatt(PISCO_bio_ms_matrix_decostand, PISCO_bio_ms_NMDS_sites$site))
-
 
 ```
