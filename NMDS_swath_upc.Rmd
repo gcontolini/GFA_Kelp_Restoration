@@ -406,7 +406,7 @@ PISCO_bio_ms_simper_results %>%
 PISCO_bio_ms <- PISCO_all_ms %>% 
   filter(!classcode %in% c("BEDRK", "BOULD", "SAND", "COB", '0-10cm', '10cm-1m', '1m-2m', '>2m', 'BARROC', 'BARSAN', 'DEADHOLD', 'SHELL')) #remake this to make sure anything I changed above doesn't carry over.
 ##### Set the site you want #######
-select_site = 'Fort_Ross'
+select_site = 'Timber'
 ####################################
 
 # How did a single restoration site change over time?
@@ -461,7 +461,6 @@ spp90 <- summary(PISCO_bio_site_simper)$`2021_2025` %>%
   rownames_to_column('species') |> 
   select(species)
 
-
 # ## look at SIMPER results with sig p values
 # comparisons <- c('2021_2025')
 # PISCO_bio_site_simper_results <- simper.tidy(simper.summary.object = PISCO_bio_site_simper, comparisons = comparisons)
@@ -491,14 +490,20 @@ sig_spp_scores <- subset(spp_scores, species %in% c(indicator_spp, 'STRPUR', 'NE
 # spp_scores <- cbind(spp_scores, pval = spp_fit$vectors$pvals)
 # sig_spp_scores <- subset(spp_scores, pval <= 0.05) %>% arrange(pval) # this is where it filters for P <= 0.05
 
+# calculate centroid
+centroid <- PISCO_bio_site_NMDS_years |> 
+  group_by(year) |> 
+  summarise(NMDS1 = mean(NMDS1), NMDS2 = mean(NMDS2))
+
 # NMDS plot
 ggplot(PISCO_bio_site_NMDS_years, aes(x = NMDS1, y = NMDS2, color = year)) +
   stat_ellipse() +
-  annotate('text', x = 1.7, y = 1.4, label = paste('Stress =', round(PISCO_bio_site_MDS1$stress, digits = 3))) +
-  annotate('text', x = 1.7, y = 1.2, label = paste('P =', site_adonis$`Pr(>F)`[1])) +
+  annotate('text', x = 1.7, y = 1.3, label = paste('Stress =', round(PISCO_bio_site_MDS1$stress, digits = 3))) + #FRC 0.98 TC 1.3
+  annotate('text', x = 1.7, y = 1.2, label = paste('P =', site_adonis$`Pr(>F)`[1])) + #FRC 0.9 TC 1.2
   # ggtitle('Swath and UPC community dissimilarities') +
   geom_segment(data = sig_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
-  geom_point(size = 5, alpha = 0.8) +
+  geom_point(size = 5, alpha = 0) +
+  geom_point(data = centroid, size = 5) +
   # scale_y_continuous(limits = c(-1, 1)) + #FRC
   # scale_x_continuous(limits = c(-1.6, 2)) + # FRC
   scale_y_continuous(limits = c(-1.2, 1.4)) + # TC
