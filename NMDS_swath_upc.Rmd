@@ -514,3 +514,32 @@ ggplot(PISCO_bio_site_NMDS_years, aes(x = NMDS1, y = NMDS2, color = year)) +
   pres_theme
 
 ```
+
+```{plots of median kelp and urchins. run subtidal_swath.Rmd first}
+# simple plot showing medians for a background slide
+
+# simple plot showing medians for a background slide
+mediansk |> filter(site %in% c('Fort Ross', 'Timber', 'Gerstle', 'Ocean'), year %in% c(2021, 2022, 2023, 2024, 2025)) |> mutate(site = factor(site, levels = c('Fort Ross', 'Timber', 'Gerstle', 'Ocean'))) |>
+  ggplot(aes(x = year, y = as.numeric(median), group = site)) + # weird so setting group = site allows the dots to connect.
+  facet_wrap(~site) +
+  geom_rect(aes(xmin = 2.5, xmax = Inf, ymin = -Inf, ymax = Inf), fill = 'grey90') +
+  # geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd, width = 0), color = 'grey50') +
+  geom_point(size = 4) +
+  geom_line() +
+  labs(y = bquote(paste('Median kelp stipe density (#',~m^-2, ')')), x = 'Year') +
+  pres_theme +
+  theme(strip.background = element_rect(fill = 'lightgreen'), strip.text = element_text(size = 20))
+
+medianpsu |> filter(site %in% c('Fort Ross', 'Timber', 'Gerstle', 'Ocean'), year %in% c(2021, 2022, 2023, 2024, 2025)) |> mutate(site = factor(site, levels = c('Fort Ross', 'Timber', 'Gerstle', 'Ocean'))) |>
+  ggplot(aes(x = year, y = as.numeric(median), group = site)) + # weird so setting group = site allows the dots to connect.
+  facet_wrap(~site) +
+  geom_rect(aes(xmin = 2.5, xmax = Inf, ymin = -Inf, ymax = Inf), fill = 'grey90') +
+  # geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd, width = 0), color = 'grey50') +
+  geom_point(size = 4) +
+  geom_line() +
+  scale_y_continuous(limits = c(0, 50)) +
+  labs(y = bquote(paste('Median purple urchin density (#',~m^-2, ')')), x = 'Year') +
+  pres_theme +
+  theme(strip.background = element_rect(fill = urchin_purple), strip.text = element_text(size = 20))
+
+```
