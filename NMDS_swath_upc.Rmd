@@ -241,12 +241,12 @@ PISCO_bio_ms %>%
   pres_theme
   
 #### limit to just years we have control data ####
-PISCO_bio_ms <- PISCO_bio_ms %>%
+PISCO_bio_ms_2425 <- PISCO_bio_ms %>%
   filter(year %in% c('2024', '2025')) # just the years we have control data. Remove this part if you are trying to consider all years.
 ########
 
 # Reformatting the data frame for the analysis. cols need to be classcodes.
-PISCO_bio_ms_matrix <- PISCO_bio_ms %>% 
+PISCO_bio_ms_matrix <- PISCO_bio_ms_2425 %>% 
   select(transect_ID, classcode, observations) %>% 
   # I want each col to be a classcode, rows to be IDs, and values to be observations.
   pivot_wider(names_from = 'classcode', values_from = 'observations') %>% 
@@ -268,10 +268,10 @@ PISCO_bio_ms_MDS1 <- metaMDS(PISCO_bio_ms_matrix_decostand, distance = 'bray') #
 PISCO_bio_ms_data_scores <- as.data.frame(scores(PISCO_bio_ms_MDS1)$sites)
 
 ## Add back identifier columns
-PISCO_bio_ms_data_scores$transect_ID = unique(PISCO_bio_ms$transect_ID) 
+PISCO_bio_ms_data_scores$transect_ID = unique(PISCO_bio_ms_2425$transect_ID) 
 
 # i want to join this with the sites and dates and stuff.
-PISCO_bio_ms_sites <- PISCO_bio_ms %>%
+PISCO_bio_ms_sites <- PISCO_bio_ms_2425 %>%
   dplyr::select(transect_ID, site, year, month, day) # just these cols
 dim(PISCO_bio_ms_sites) # check dimensions. 5184 rows. remove duplicates for the join.
 PISCO_bio_ms_sites_distinct <- distinct(PISCO_bio_ms_sites) 
@@ -279,6 +279,69 @@ PISCO_bio_ms_sites_distinct <- distinct(PISCO_bio_ms_sites)
 PISCO_bio_ms_NMDS_sites <- dplyr::inner_join(PISCO_bio_ms_data_scores, PISCO_bio_ms_sites_distinct, by = 'transect_ID') %>% 
   mutate(year = as.factor(year))
 rownames(PISCO_bio_ms_matrix_decostand) = paste(PISCO_bio_ms_NMDS_sites$site, PISCO_bio_ms_NMDS_sites$transect_ID)
+```
+
+```{r SIMPER analysis swath and bio UPC}
+# Which species are most responsible for any community differences observed? Calculate discriminating species between two groups using BC dissimilarities.
+PISCO_bio_ms_2425_simper <- simper(PISCO_bio_ms_matrix_decostand, group = PISCO_bio_ms_NMDS_sites$site)
+summary(PISCO_bio_ms_2425_simper)
+PISCO_bio_ms_2425_simper
+
+# The top contributors are:
+## STRPUR always in top 2
+## ENCRED always in top 2
+## CRUCOR 
+## BARSAN
+## BARROC
+## DESSPP
+## BARNAC
+## PTECALAD
+
+# Contrasts I care most about:
+## Should probably include years here as well!! #***
+# FR Cove vs. Timber Cove
+summary(PISCO_bio_ms_2425_simper)[1]$Fort_Ross_Timber %>% 
+  round(digits = 4) %>% 
+  slice_head(n = 10) %>% 
+  rownames_to_column() %>% 
+  flextable() %>% 
+  flextable::set_caption("FRC vs TC")
+
+  flextable::set_caption("FRC vs TC")
+
+# FRC vs GC
+summary(PISCO_bio_ms_2425_simper)[3]$Fort_Ross_Gerstle %>% 
+  round(digits = 4) %>% 
+  slice_head(n = 10) %>% 
+  rownames_to_column() %>% 
+  flextable() %>% 
+  flextable::set_caption("FRC vs GC")
+  
+# Timber Cove vs. Ocean Cove
+summary(PISCO_bio_ms_2425_simper)[4]$Timber_Ocean %>% 
+  round(digits = 4) %>% 
+  slice_head(n = 10) %>% 
+  rownames_to_column() %>% 
+  flextable() %>% 
+  flextable::set_caption("TC vs OC")
+
+comparisons <- c('Fort_Ross_Timber', 'Fort_Ross_Gerstle', 'Timber_Ocean', 'Fort_Ross_Ocean', 'Timber_Gerstle', 'Ocean_Gerstle')
+PISCO_bio_ms_2425_simper_results <- simper.tidy(simper.summary.object = PISCO_bio_ms_simper, comparisons = comparisons)
+
+PISCO_bio_ms_2425_simper_results %>% 
+  filter(p <= 0.05) %>% 
+  arrange(desc(average))
+  # count(Comparison) # which pair comparison has the most significant differences? maybe this pair are the most different. FRC vs. Tc. 
+
+# Summarize the average differences among each pair.
+PISCO_bio_ms_2425_simper_results %>% 
+  group_by(Comparison) %>% 
+  summarise(sum_average = sum(average), sum_sd = sd(average)) %>% 
+  ggplot(aes(x = Comparison, y = sum_average)) +
+  geom_errorbar(aes(ymin = sum_average - sum_sd, ymax = sum_average + sum_sd, width = 0)) +
+  geom_point(size = 6) +
+  pres_theme + theme(axis.text.x = element_text(size = 15))
+
 ```
 
 ```{r fig.cap = 'Community dissimilarities (Bray-Curtis) among subtidal swath and UPC transects with just biological points. Species vectors shown for significant species only (P < 0.05)'}
@@ -310,7 +373,10 @@ sig_spp_scores$NMDS2_label = sig_spp_scores$NMDS2
 # Indicator species
 indicators <- multipatt(PISCO_bio_ms_matrix_decostand, PISCO_bio_ms_NMDS_sites$siteyear)
 summary(indicators) # can't figure out how to pull the species, so I'll just manually do it.
-indicator_spp <- c('CORCAL','POMGIB','PHRCAL','BALNUM','LEPSPP','ALAMAR','BARNAC', 'LAMSET','HYDROID', 'NERLUEJUV', 'HALRUF', 'HENLEV', 'HALKAM', 'PISBRE', 'ANTSOL', 'DODSPP', 'PTECALAD', 'NERLUE', 'PTECALJUV', 'LAMREC') # 
+indicator_spp <- c('STRPUR', 'CRUCOR', 'ENCRED', 'PATMIN', # barren spp.
+                   'NERLUE', 'LAMSET', 'NERLUEJUV',  'LAMREC')  
+                   # 'HALRUF', 'HALKAM',  'PTECALAD', 'PTECALJUV', 'LAMREC') #forest spp.
+                   # 'CORCAL','POMGIB','PHRCAL','BALNUM','LEPSPP','ALAMAR','BARNAC','HYDROID', 'PISBRE', 'ANTSOL', 'DODSPP', 'HENLEV') #other indicators
 
 ## Prepping the species vectors with indicator species
 sig_spp_scores2 <- subset(spp_scores, species %in% c(indicator_spp, 'STRPUR', 'NERLUE'))
@@ -337,77 +403,128 @@ ggplot(PISCO_bio_ms_NMDS_sites, aes(x = NMDS1, y = NMDS2, color = site, shape = 
   theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12)) +
   scale_color_manual(values = viridis) +
   pres_theme
-
-```
-
-```{r SIMPER analysis swath and bio UPC}
-# Which species are most responsible for any community differences observed? Calculate discriminating species between two groups using BC dissimilarities.
-PISCO_bio_ms_simper <- simper(PISCO_bio_ms_matrix_decostand, group = PISCO_bio_ms_NMDS_sites$site)
-summary(PISCO_bio_ms_simper)
-PISCO_bio_ms_simper
-
-# The top contributors are:
-## STRPUR always in top 2
-## ENCRED always in top 2
-## CRUCOR 
-## BARSAN
-## BARROC
-## DESSPP
-## BARNAC
-## PTECALAD
-
-# Contrasts I care most about:
-## Should probably include years here as well!! #***
-# FR Cove vs. Timber Cove
-summary(PISCO_bio_ms_simper)[1]$Fort_Ross_Timber %>% 
-  round(digits = 4) %>% 
-  slice_head(n = 10) %>% 
-  rownames_to_column() %>% 
-  flextable() %>% 
-  flextable::set_caption("FRC vs TC")
-
-  flextable::set_caption("FRC vs TC")
-
-# FRC vs GC
-summary(PISCO_bio_ms_simper)[3]$Fort_Ross_Gerstle %>% 
-  round(digits = 4) %>% 
-  slice_head(n = 10) %>% 
-  rownames_to_column() %>% 
-  flextable() %>% 
-  flextable::set_caption("FRC vs GC")
-  
-# Timber Cove vs. Ocean Cove
-summary(PISCO_bio_ms_simper)[4]$Timber_Ocean %>% 
-  round(digits = 4) %>% 
-  slice_head(n = 10) %>% 
-  rownames_to_column() %>% 
-  flextable() %>% 
-  flextable::set_caption("TC vs OC")
-
-comparisons <- c('Fort_Ross_Timber', 'Fort_Ross_Gerstle', 'Timber_Ocean', 'Fort_Ross_Ocean', 'Timber_Gerstle', 'Ocean_Gerstle')
-PISCO_bio_ms_simper_results <- simper.tidy(simper.summary.object = PISCO_bio_ms_simper, comparisons = comparisons)
-
-PISCO_bio_ms_simper_results %>% 
-  filter(p <= 0.05) %>% 
-  arrange(desc(average))
-  # count(Comparison) # which pair comparison has the most significant differences? maybe this pair are the most different. FRC vs. Tc. 
-
-
-# Summarize the average differences among each pair.
-PISCO_bio_ms_simper_results %>% 
-  group_by(Comparison) %>% 
-  summarise(sum_average = sum(average), sum_sd = sd(average)) %>% 
-  ggplot(aes(x = Comparison, y = sum_average)) +
-  geom_errorbar(aes(ymin = sum_average - sum_sd, ymax = sum_average + sum_sd, width = 0)) +
-  geom_point(size = 6) +
-  pres_theme + theme(axis.text.x = element_text(size = 15))
-
+# ok this is weird because STRPUR, ENCRED, and CRUCOR are all in opposite directions!!! #***
 ```
 
 # Site specific analyses
-```{r one site only; nmds, permanova, simper}
+```{r Fort Ross only; nmds, permanova, simper}
 PISCO_bio_ms <- PISCO_all_ms %>% 
   filter(!classcode %in% c("BEDRK", "BOULD", "SAND", "COB", '0-10cm', '10cm-1m', '1m-2m', '>2m', 'BARROC', 'BARSAN', 'DEADHOLD', 'SHELL')) #remake this to make sure anything I changed above doesn't carry over.
+##### Set the site you want #######
+select_site = 'Fort_Ross'
+####################################
+
+# How did a single restoration site change over time?
+## create dissimilarity matrix for Fort Ross only.
+
+PISCO_bio_site <- PISCO_bio_ms %>%
+  filter(site == select_site) %>% 
+  mutate(year = as.factor(year))
+
+PISCO_bio_site_matrix <- PISCO_bio_site %>% 
+  select(transect_ID, classcode, observations) %>% 
+  # I want each col to be a classcode, rows to be IDs, and values to be observations.
+  pivot_wider(names_from = 'classcode', values_from = 'observations') %>% 
+  replace(is.na(.), 0) %>% # make any NA value into 0.
+  as.data.frame()
+
+PISCO_bio_site_matrix$transect_ID = NULL # remove transect_ID column
+
+## Convert absolute abundance to relative abundance to standardize
+PISCO_bio_site_matrix_decostand <- decostand(PISCO_bio_site_matrix, method = 'total') #
+
+set.seed(1977128) # set seed to make sure the metaMDS repeats a best solution.
+PISCO_bio_site_MDS1 <- metaMDS(PISCO_bio_site_matrix_decostand, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.15
+
+## reformat so it can be plotted in ggplot with groupings.
+PISCO_bio_site_data_scores <- as.data.frame(scores(PISCO_bio_site_MDS1)$sites)
+
+## Add back identifier columns
+PISCO_bio_site_data_scores$transect_ID = unique(PISCO_bio_site$transect_ID) 
+
+# i want to join this with the sites and dates and stuff.
+PISCO_bio_site_years <- PISCO_bio_site %>%
+  dplyr::select(transect_ID, year) # just these cols
+dim(PISCO_bio_site_years) # check dimensions. 2037 rows. remove duplicates for the join.
+PISCO_bio_site_years_distinct <- distinct(PISCO_bio_site_years)
+
+PISCO_bio_site_NMDS_years <- dplyr::inner_join(PISCO_bio_site_data_scores, PISCO_bio_site_years_distinct, by = 'transect_ID')
+# rownames(PISCO_bio_frc_matrix_decostand) = PISCO_bio_frc_NMDS_years$year
+
+# PERMANOVA
+site_adonis <- adonis2(PISCO_bio_site_matrix_decostand ~ PISCO_bio_site_NMDS_years$year) # seems like bray-curtis is the default yay
+## no need to nest transectID in site here because it's only for one site!!
+site_adonis
+onesite_disper <- betadisper(vegdist(PISCO_bio_site_matrix_decostand), PISCO_bio_site_NMDS_years$year) #***
+anova(onesite_disper) #
+
+# SIMPER
+PISCO_bio_site_simper <- simper(PISCO_bio_site_matrix_decostand, group = PISCO_bio_site_NMDS_years$year)
+PISCO_bio_site_simper
+summary(PISCO_bio_site_simper)$`2021_2025`
+spp90 <- summary(PISCO_bio_site_simper)$`2021_2025` %>% 
+  filter(cumsum <= 0.9) %>% 
+  rownames_to_column('species') |> 
+  select(species)
+
+# ## look at SIMPER results with sig p values
+# comparisons <- c('2021_2025')
+# PISCO_bio_site_simper_results <- simper.tidy(simper.summary.object = PISCO_bio_site_simper, comparisons = comparisons)
+# 
+# sig_spp <-  PISCO_bio_site_simper_results %>% 
+#   filter(Xp <= 0.05) %>% #dunno why there is an X in the col names
+#   arrange(desc(Xaverage)) |> 
+#   select(Species)
+#   # count(Comparison) # which pair comparison has the most significant differences? maybe this pair are the most different.
+
+# spp90 <- PISCO_bio_site_simper_results %>% 
+#   filter(Xcusum <= 0.9) %>% #dunno why there is an X in the col names
+#   arrange(desc(Xcusum)) |> 
+#   select(Species)
+
+## Indicator species
+indicators <- multipatt(PISCO_bio_site_matrix_decostand, PISCO_bio_site_NMDS_years$year)
+summary(indicators) # can't figure out how to pull the species, so I'll just manually do it.
+indicator_spp <- c('NERLUE','DESSPP','PARCAL','TETAUR','LACY','CORCAL','LEAFY','HENLEV','PISBRE','CUCSPP') # Fort Ross
+# indicator_spp <- c('NERLUE','NERLUEJUV','LAMREC','HALKAM','PISGIG','DERIMB','PISOCH') # Timber
+bar_for_spp <- c('STRPUR', 'ENCRED', 'CRUCOR', 'PATMIN', 'NERLUE', 'NERLUEJUV', 'LAMREC', 'LAMSET', 'LAMSPP') # barren + forest species
+
+
+# Prepping the species vectors
+spp_fit <- envfit(PISCO_bio_site_MDS1, PISCO_bio_site_matrix_decostand, permutations = 999) # there were 50+ warnings bc SD = 0.
+spp_scores <- as.data.frame(scores(spp_fit, display = 'vectors')) |> 
+  rownames_to_column('species')
+ind_spp_scores <- subset(spp_scores, species %in% indicator_spp)
+bar_for_spp_scores <- subset(spp_scores, species %in% bar_for_spp)
+# spp_scores <- cbind(spp_scores, pval = spp_fit$vectors$pvals)
+# sig_spp_scores <- subset(spp_scores, pval <= 0.05) %>% arrange(pval) # this is where it filters for P <= 0.05
+
+# calculate centroid
+centroid <- PISCO_bio_site_NMDS_years |> 
+  group_by(year) |> 
+  summarise(NMDS1 = mean(NMDS1), NMDS2 = mean(NMDS2))
+
+# NMDS plot
+ggplot(PISCO_bio_site_NMDS_years, aes(x = NMDS1, y = NMDS2, color = year)) +
+  stat_ellipse() +
+  annotate('text', x = 1.7, y = 0.98, label = paste('Stress =', round(PISCO_bio_site_MDS1$stress, digits = 3))) + #FRC 0.98 TC 1.3
+  annotate('text', x = 1.7, y = 0.9, label = paste('P =', site_adonis$`Pr(>F)`[1])) + #FRC 0.9 TC 1.2
+  geom_segment(data = bar_for_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
+  geom_point(size = 5, alpha = 0) +
+  geom_point(data = centroid, size = 5) +
+  scale_y_continuous(limits = c(-1, 1)) + #FRC
+  scale_x_continuous(limits = c(-1.6, 2)) + # FRC
+  # scale_y_continuous(limits = c(-1.2, 1.4)) + # TC
+  # scale_x_continuous(limits = c(-2.1, 2.3)) + # TC
+  annotate('text', size = 3, x = bar_for_spp_scores$NMDS1, y = bar_for_spp_scores$NMDS2, label = bar_for_spp_scores$species, color = 'grey60') +
+  theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12)) +
+  scale_color_manual(values = divergent) +
+  pres_theme
+
+```
+
+```{r Timber only; nmds, permanova, simper}
+
 ##### Set the site you want #######
 select_site = 'Timber'
 ####################################
@@ -452,6 +569,7 @@ PISCO_bio_site_NMDS_years <- dplyr::inner_join(PISCO_bio_site_data_scores, PISCO
 # PERMANOVA
 site_adonis <- adonis2(PISCO_bio_site_matrix_decostand ~ PISCO_bio_site_NMDS_years$year) # seems like bray-curtis is the default yay
 ## no need to nest transectID in site here because it's only for one site!!
+site_adonis
 onesite_disper <- betadisper(vegdist(PISCO_bio_site_matrix_decostand), PISCO_bio_site_NMDS_years$year) #***
 anova(onesite_disper) #
 
@@ -482,14 +600,15 @@ spp90 <- summary(PISCO_bio_site_simper)$`2021_2025` %>%
 ## Indicator species
 indicators <- multipatt(PISCO_bio_site_matrix_decostand, PISCO_bio_site_NMDS_years$year)
 summary(indicators) # can't figure out how to pull the species, so I'll just manually do it.
-# indicator_spp <- c('NERLUE','DESSPP','PARCAL','TETAUR','LACY','CORCAL','LEAFY','HENLEV','PISBRE','CUCSPP') # Fort Ross
-indicator_spp <- c('CUCMIN','NERLUEJUV','LAMREC','HALKAM','PISGIG','DERIMB','PISOCH') # Timber
+indicator_spp <- c('NERLUE','NERLUEJUV','LAMREC','HALKAM','PISGIG','DERIMB','PISOCH') # Timber
+bar_for_spp <- c('STRPUR', 'ENCRED', 'CRUCOR', 'PATMIN', 'NERLUE', 'NERLUEJUV', 'LAMREC', 'LAMSET', 'LAMSPP') # barren + forest species
 
 # Prepping the species vectors
 spp_fit <- envfit(PISCO_bio_site_MDS1, PISCO_bio_site_matrix_decostand, permutations = 999) # there were 50+ warnings bc SD = 0.
 spp_scores <- as.data.frame(scores(spp_fit, display = 'vectors')) |> 
   rownames_to_column('species')
-sig_spp_scores <- subset(spp_scores, species %in% c(indicator_spp, 'STRPUR', 'NERLUE'))
+ind_spp_scores <- subset(spp_scores, species %in% indicator_spp)
+bar_for_spp_scores <- subset(spp_scores, species %in% bar_for_spp)
 # spp_scores <- cbind(spp_scores, pval = spp_fit$vectors$pvals)
 # sig_spp_scores <- subset(spp_scores, pval <= 0.05) %>% arrange(pval) # this is where it filters for P <= 0.05
 
@@ -503,20 +622,18 @@ ggplot(PISCO_bio_site_NMDS_years, aes(x = NMDS1, y = NMDS2, color = year)) +
   stat_ellipse() +
   annotate('text', x = 1.7, y = 1.3, label = paste('Stress =', round(PISCO_bio_site_MDS1$stress, digits = 3))) + #FRC 0.98 TC 1.3
   annotate('text', x = 1.7, y = 1.2, label = paste('P =', site_adonis$`Pr(>F)`[1])) + #FRC 0.9 TC 1.2
-  # ggtitle('Swath and UPC community dissimilarities') +
-  geom_segment(data = sig_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
+  geom_segment(data = bar_for_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
   geom_point(size = 5, alpha = 0) +
   geom_point(data = centroid, size = 5) +
-  # scale_y_continuous(limits = c(-1, 1)) + #FRC
-  # scale_x_continuous(limits = c(-1.6, 2)) + # FRC
   scale_y_continuous(limits = c(-1.2, 1.4)) + # TC
   scale_x_continuous(limits = c(-2.1, 2.3)) + # TC
-  annotate('text', size = 3, x = sig_spp_scores$NMDS1, y = sig_spp_scores$NMDS2, label = sig_spp_scores$species, color = 'grey60') +
+  annotate('text', size = 3, x = bar_for_spp_scores$NMDS1, y = bar_for_spp_scores$NMDS2, label = bar_for_spp_scores$species, color = 'grey60') +
   theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12)) +
   scale_color_manual(values = divergent) +
   pres_theme
 
 ```
+
 
 ```{plots of median kelp and urchins. run subtidal_swath.Rmd first}
 # simple plot showing medians for a background slide
