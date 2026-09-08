@@ -228,11 +228,14 @@ PISCO_bio_ms %>%
 PISCO_bio_ms %>% 
   count(year, site, transect_ID) %>% 
   count(year, site) %>% 
+  bind_rows(tibble(year = 2023, site = 'Timber')) |> 
+  complete(year, site, fill = list(n = 0)) |> 
+  mutate(site = factor(site, levels = c('Fort_Ross', 'Timber', 'Gerstle', 'Ocean'))) |> 
   ggplot(aes(x = year, y = n, color = site)) +
   scale_color_manual(values = viridis) + # Okabeito color palette . https://datavizf24.classes.andrewheiss.com/resource/colors.html
   # scale_color_discrete(palette = 'viridis') + # viridis color palette option
-  geom_point(size = 7, position = position_dodge(0.2)) +
-  geom_line(size = 1.5, position = position_dodge(0.2)) +
+  geom_point(size = 7, position = position_dodge(0.15)) +
+  geom_line(size = 1.5, position = position_dodge(0.15)) +
   labs(y = 'Number of transects', x = 'Year') +
   scale_y_continuous(limits = c(0, 10), breaks = seq(0, 10, 2)) +
   pres_theme
