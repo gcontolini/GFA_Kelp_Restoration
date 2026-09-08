@@ -255,13 +255,27 @@ PISCO_bio_ms_matrix <- PISCO_bio_ms_2425 %>%
 
 PISCO_bio_ms_matrix$transect_ID = NULL # remove transect_ID column
 
+# Remove species that aren't present anywhere. This happened because they were present before I selected only certain years?
+absent_spp <- PISCO_bio_ms_matrix |> 
+  summarise(across(where(is.numeric), ~sum(.x))) |> 
+  pivot_longer(cols = c(everything()), names_to = 'species', values_to = 'value') |> 
+  filter(value == 0) |> 
+  select(species)
+
+PISCO_bio_ms_matrix_complete <- PISCO_bio_ms_matrix |> select(-absent_spp$species)
+
 ## Convert absolute abundance to relative abundance to standardize
 # Aren't they already standardized? I mean they're all in number per m2. That feels standardized. Well Maria says to do this.
-PISCO_bio_ms_matrix_decostand <- decostand(PISCO_bio_ms_matrix, method = 'total') # 'total' divides everything by row totals. 
+PISCO_bio_ms_matrix_decostand <- decostand(PISCO_bio_ms_matrix_complete, method = 'total') # 'total' divides everything by row totals. 
+PISCO_bio_ms_matrix_decostand <- decostand(PISCO_bio_ms_matrix_complete, method = 'max') # 'max' divides everything by col totals. 
+
 # calculate distances? or is that done in the metaMDS? 
 # avgdist(sample = PISCO_bio_ms_matrix_decostand) # calculates bray-curtis distances a set number of times and reports the average.
 
-set.seed(1917678) # set seed to make sure the metaMDS repeats a best solution.
+# Do I want decostand method = total or max?? Total seems to be doing weird stuff with the urchin barren species, where crucor, encred, and strpur are all very unassociated, which is wrong. Trying max here.
+
+
+set.seed(1299217) # set seed to make sure the metaMDS repeats a best solution. # 1299217 repeating with 'max'
 PISCO_bio_ms_MDS1 <- metaMDS(PISCO_bio_ms_matrix_decostand, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.139
 
 ## reformat so it can be plotted in ggplot with groupings.
@@ -299,48 +313,48 @@ PISCO_bio_ms_2425_simper
 
 # Contrasts I care most about:
 ## Should probably include years here as well!! #***
-# FR Cove vs. Timber Cove
-summary(PISCO_bio_ms_2425_simper)[1]$Fort_Ross_Timber %>% 
-  round(digits = 4) %>% 
-  slice_head(n = 10) %>% 
-  rownames_to_column() %>% 
-  flextable() %>% 
-  flextable::set_caption("FRC vs TC")
+# # FR Cove vs. Timber Cove
+# summary(PISCO_bio_ms_2425_simper)[1]$Fort_Ross_Timber %>% 
+#   round(digits = 4) %>% 
+#   slice_head(n = 10) %>% 
+#   rownames_to_column() %>% 
+#   flextable() %>% 
+#   flextable::set_caption("FRC vs TC")
+# 
+#   flextable::set_caption("FRC vs TC")
+# 
+# # FRC vs GC
+# summary(PISCO_bio_ms_2425_simper)[3]$Fort_Ross_Gerstle %>% 
+#   round(digits = 4) %>% 
+#   slice_head(n = 10) %>% 
+#   rownames_to_column() %>% 
+#   flextable() %>% 
+#   flextable::set_caption("FRC vs GC")
+#   
+# # Timber Cove vs. Ocean Cove
+# summary(PISCO_bio_ms_2425_simper)[4]$Timber_Ocean %>% 
+#   round(digits = 4) %>% 
+#   slice_head(n = 10) %>% 
+#   rownames_to_column() %>% 
+#   flextable() %>% 
+#   flextable::set_caption("TC vs OC")
 
-  flextable::set_caption("FRC vs TC")
-
-# FRC vs GC
-summary(PISCO_bio_ms_2425_simper)[3]$Fort_Ross_Gerstle %>% 
-  round(digits = 4) %>% 
-  slice_head(n = 10) %>% 
-  rownames_to_column() %>% 
-  flextable() %>% 
-  flextable::set_caption("FRC vs GC")
-  
-# Timber Cove vs. Ocean Cove
-summary(PISCO_bio_ms_2425_simper)[4]$Timber_Ocean %>% 
-  round(digits = 4) %>% 
-  slice_head(n = 10) %>% 
-  rownames_to_column() %>% 
-  flextable() %>% 
-  flextable::set_caption("TC vs OC")
-
-comparisons <- c('Fort_Ross_Timber', 'Fort_Ross_Gerstle', 'Timber_Ocean', 'Fort_Ross_Ocean', 'Timber_Gerstle', 'Ocean_Gerstle')
-PISCO_bio_ms_2425_simper_results <- simper.tidy(simper.summary.object = PISCO_bio_ms_simper, comparisons = comparisons)
-
-PISCO_bio_ms_2425_simper_results %>% 
-  filter(p <= 0.05) %>% 
-  arrange(desc(average))
-  # count(Comparison) # which pair comparison has the most significant differences? maybe this pair are the most different. FRC vs. Tc. 
+# comparisons <- c('Fort_Ross_Timber', 'Fort_Ross_Gerstle', 'Timber_Ocean', 'Fort_Ross_Ocean', 'Timber_Gerstle', 'Ocean_Gerstle')
+# PISCO_bio_ms_2425_simper_results <- simper.tidy(simper.summary.object = PISCO_bio_ms_simper, comparisons = comparisons)
+# 
+# PISCO_bio_ms_2425_simper_results %>% 
+#   filter(p <= 0.05) %>% 
+#   arrange(desc(average))
+#   # count(Comparison) # which pair comparison has the most significant differences? maybe this pair are the most different. FRC vs. Tc. 
 
 # Summarize the average differences among each pair.
-PISCO_bio_ms_2425_simper_results %>% 
-  group_by(Comparison) %>% 
-  summarise(sum_average = sum(average), sum_sd = sd(average)) %>% 
-  ggplot(aes(x = Comparison, y = sum_average)) +
-  geom_errorbar(aes(ymin = sum_average - sum_sd, ymax = sum_average + sum_sd, width = 0)) +
-  geom_point(size = 6) +
-  pres_theme + theme(axis.text.x = element_text(size = 15))
+# PISCO_bio_ms_2425_simper_results %>% 
+#   group_by(Comparison) %>% 
+#   summarise(sum_average = sum(average), sum_sd = sd(average)) %>% 
+#   ggplot(aes(x = Comparison, y = sum_average)) +
+#   geom_errorbar(aes(ymin = sum_average - sum_sd, ymax = sum_average + sum_sd, width = 0)) +
+#   geom_point(size = 6) +
+#   pres_theme + theme(axis.text.x = element_text(size = 15))
 
 ```
 
@@ -397,9 +411,9 @@ ggplot(PISCO_bio_ms_NMDS_sites, aes(x = NMDS1, y = NMDS2, color = site, shape = 
   stat_ellipse() +
   annotate('text', x = 1.5, y = 1.2, label = paste('Stress =', round(PISCO_bio_ms_MDS1$stress, digits = 3))) +
   geom_segment(data = sig_spp_scores2, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
-  geom_point(size = 4, alpha = 0.7) +
+  # geom_point(size = 4, alpha = 0.7) +
   annotate('text', size = 3, x = sig_spp_scores2$NMDS1, y = sig_spp_scores2$NMDS2, label = sig_spp_scores2$species, color = 'grey60') +
-  # geom_point(data = centroid, size = 5) +
+  geom_point(data = centroid, size = 5) +
   theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12)) +
   scale_color_manual(values = viridis) +
   pres_theme
@@ -611,6 +625,8 @@ ind_spp_scores <- subset(spp_scores, species %in% indicator_spp)
 bar_for_spp_scores <- subset(spp_scores, species %in% bar_for_spp)
 # spp_scores <- cbind(spp_scores, pval = spp_fit$vectors$pvals)
 # sig_spp_scores <- subset(spp_scores, pval <= 0.05) %>% arrange(pval) # this is where it filters for P <= 0.05
+# Wait what species ARE associated with STRPUR? BC it's not CRUCOR and ENCRED. which seems wrong. 
+spp_scores |> filter(NMDS1 < -0.1 & NMDS2 > 0.05) # ANTXAN, MEDAEQ, STRPUR, DODSPP, PTECALJUV ??????
 
 # calculate centroid
 centroid <- PISCO_bio_site_NMDS_years |> 
