@@ -507,7 +507,6 @@ indicator_spp <- c('NERLUE','DESSPP','PARCAL','TETAUR','LACY','CORCAL','LEAFY','
 # indicator_spp <- c('NERLUE','NERLUEJUV','LAMREC','HALKAM','PISGIG','DERIMB','PISOCH') # Timber
 bar_for_spp <- c('STRPUR', 'ENCRED', 'CRUCOR', 'PATMIN', 'NERLUE', 'NERLUEJUV', 'LAMREC', 'LAMSET', 'LAMSPP') # barren + forest species
 
-
 # Prepping the species vectors
 spp_fit <- envfit(PISCO_bio_site_MDS1, PISCO_bio_site_matrix_decostand, permutations = 999) # there were 50+ warnings bc SD = 0.
 spp_scores <- as.data.frame(scores(spp_fit, display = 'vectors')) |> 
@@ -538,6 +537,8 @@ ggplot(PISCO_bio_site_NMDS_years, aes(x = NMDS1, y = NMDS2, color = year)) +
   theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12)) +
   scale_color_manual(values = divergent) +
   pres_theme
+
+ordisurf()#***
 
 ```
 
