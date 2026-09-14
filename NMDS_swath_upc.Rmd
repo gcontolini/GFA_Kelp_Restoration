@@ -654,7 +654,6 @@ ggplot(PISCO_bio_site_NMDS_years, aes(x = NMDS1, y = NMDS2, color = year)) +
 
 ```
 
-
 ```{plots of median kelp and urchins. run subtidal_swath.Rmd first}
 # simple plot showing medians for a background slide. must run subtidal_swath.Rmd first.
 
@@ -681,5 +680,24 @@ medianpsu |> filter(site %in% c('Fort Ross', 'Timber', 'Gerstle', 'Ocean'), year
   labs(y = bquote(paste('Median purple urchin density (#',~m^-2, ')')), x = 'Year') +
   pres_theme +
   theme(strip.background = element_rect(fill = urchin_purple), strip.text = element_text(size = 20))
+
+```
+
+```{r checking paired associations}
+PISCO_bio_ms_matrix_complete |> 
+  ggplot(aes(x = STRPUR, y = CRUCOR)) +
+  geom_point()
+
+PISCO_bio_ms_matrix_complete |> 
+  ggplot(aes(x = STRPUR, y = ENCRED)) +
+  geom_point()
+
+PISCO_bio_ms_matrix_complete |> 
+  ggplot(aes(x = ENCRED, y = CRUCOR)) +
+  geom_point()
+
+PISCO_bio_ms_matrix_complete |> 
+  ggplot(aes(x = LAMREC, y = NERLUE)) +
+  geom_point()
 
 ```
