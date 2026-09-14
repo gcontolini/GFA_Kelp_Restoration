@@ -331,6 +331,19 @@ PISCO_swaths_all <- PISCO_swaths %>%
 # MERGE THE SWATHS AND UPCS!!!!!!!!!!!!!!!!!
 PISCO_all <- bind_rows(PISCO_swaths_all, upc_all) %>% 
   arrange(year, month, day, site, transect_ID, classcode)
+
+## Merge APOCAL and PARCAL bc they are the same species.
+APOCAL_sum <- PISCO_all |> 
+  filter(classcode %in% c('APOCAL', 'PARCAL')) |> 
+  group_by(year, month, day, site, transect_ID) |> 
+  summarise(observations = sum(observations)) |> # sum apocal and parcal with transect_ID col as key
+  mutate(classcode = 'APOCAL')
+
+PISCO_all_apoparremoved <- PISCO_all |> filter(!classcode %in% c('APOCAL', 'PARCAL')) # remove apocal and parcal cols to replace with sum
+
+PISCO_all_2 <- bind_rows(PISCO_all_apoparremoved, APOCAL_sum)
+PISCO_all_2 |> filter(classcode == 'APOCAL')
+write_csv(PISCO_all_2, 'PISCO_2021-2025.csv')
 ```
 
 ```{r THE FULLY COMBINED DATASET, include = FALSE}
