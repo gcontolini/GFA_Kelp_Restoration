@@ -503,7 +503,7 @@ spp90 <- summary(PISCO_bio_site_simper)$`2021_2025` %>%
 ## Indicator species
 indicators <- multipatt(PISCO_bio_site_matrix_decostand, PISCO_bio_site_NMDS_years$year)
 summary(indicators) # can't figure out how to pull the species, so I'll just manually do it.
-indicator_spp <- c('NERLUE','DESSPP','PARCAL','TETAUR','LACY','CORCAL','LEAFY','HENLEV','PISBRE','CUCSPP', 'HALRUF', 'APOCAL') # Fort Ross
+indicator_spp <- c('NERLUE','DESSPP','TETAUR','LACY','CORCAL','LEAFY','HENLEV','PISBRE','CUCSPP', 'HALRUF') # Fort Ross
 # indicator_spp <- c('NERLUE','NERLUEJUV','LAMREC','HALKAM','PISGIG','DERIMB','PISOCH') # Timber
 bar_for_spp <- c('STRPUR', 'ENCRED', 'CRUCOR', 'PATMIN', 'NERLUE', 'NERLUEJUV', 'LAMREC', 'LAMSET', 'LAMSPP') # barren + forest species
 
@@ -511,7 +511,7 @@ bar_for_spp <- c('STRPUR', 'ENCRED', 'CRUCOR', 'PATMIN', 'NERLUE', 'NERLUEJUV', 
 spp_fit <- envfit(PISCO_bio_site_MDS1, PISCO_bio_site_matrix_decostand, permutations = 999) # there were 50+ warnings bc SD = 0.
 spp_scores <- as.data.frame(scores(spp_fit, display = 'vectors')) |> 
   rownames_to_column('species')
-ind_spp_scores <- subset(spp_scores, species %in% c(indicator_spp, 'STRPUR'))
+ind_spp_scores <- subset(spp_scores, species %in% c(indicator_spp, 'STRPUR' ,'NERLUE'))
 bar_for_spp_scores <- subset(spp_scores, species %in% bar_for_spp)
 # spp_scores <- cbind(spp_scores, pval = spp_fit$vectors$pvals)
 # sig_spp_scores <- subset(spp_scores, pval <= 0.05) %>% arrange(pval) # this is where it filters for P <= 0.05
@@ -528,7 +528,7 @@ ggplot(PISCO_bio_site_NMDS_years, aes(x = NMDS1, y = NMDS2, color = year)) +
   annotate('text', x = 1.7, y = 0.9, label = paste('P =', site_adonis$`Pr(>F)`[1])) + #FRC 0.9 TC 1.2
   geom_segment(data = ind_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
   geom_point(size = 5, alpha = 0) +
-  # geom_point(data = centroid, size = 5) +
+  geom_point(data = centroid, size = 5) +
   scale_y_continuous(limits = c(-1, 1)) + #FRC
   scale_x_continuous(limits = c(-1.6, 2)) + # FRC
   # scale_y_continuous(limits = c(-1.2, 1.4)) + # TC
@@ -538,7 +538,7 @@ ggplot(PISCO_bio_site_NMDS_years, aes(x = NMDS1, y = NMDS2, color = year)) +
   scale_color_manual(values = divergent) +
   pres_theme
 
-ordisurf()#***
+# ordisurf()#*** not for me I think.
 
 ```
 
@@ -619,7 +619,7 @@ spp90 <- summary(PISCO_bio_site_simper)$`2021_2025` %>%
 ## Indicator species
 indicators <- multipatt(PISCO_bio_site_matrix_decostand, PISCO_bio_site_NMDS_years$year)
 summary(indicators) # can't figure out how to pull the species, so I'll just manually do it.
-indicator_spp <- c('NERLUE','NERLUEJUV','LAMREC','HALKAM','PISGIG','DERIMB','PISOCH', 'CUCMIN') # Timber
+indicator_spp <- c('NERLUEJUV','LAMREC','HALKAM','PISGIG','DERIMB','PISOCH', 'CUCMIN') # Timber
 bar_for_spp <- c('STRPUR', 'ENCRED', 'CRUCOR', 'PATMIN', 'NERLUE', 'NERLUEJUV', 'LAMREC', 'LAMSET', 'LAMSPP') # barren + forest species
 
 # Prepping the species vectors
