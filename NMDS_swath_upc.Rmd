@@ -183,30 +183,29 @@ PISCO_all_ms_simper
 
 # Contrasts I care most about:
 # FR Cove vs. Timber Cove
-summary(PISCO_all_ms_simper)[1]$`Fort Ross_Timber` %>% 
-  round(digits = 4) %>% 
-  slice_head(n = 10) %>% 
-  rownames_to_column() %>% 
-  flextable() %>% 
-  flextable::set_caption("FRC vs TC")
+# summary(PISCO_all_ms_simper)[1]$`Fort Ross_Timber` %>% 
+#   round(digits = 4) %>% 
+#   slice_head(n = 10) %>% 
+#   rownames_to_column() %>% 
+#   flextable() %>% 
+#   flextable::set_caption("FRC vs TC")
 
-  flextable::set_caption("FRC vs TC")
 
 # FRC vs GC
-summary(PISCO_all_ms_simper)[3]$`Fort Ross_Gerstle` %>% 
-  round(digits = 4) %>% 
-  slice_head(n = 10) %>% 
-  rownames_to_column() %>% 
-  flextable() %>% 
-  flextable::set_caption("FRC vs GC")
+# summary(PISCO_all_ms_simper)[3]$`Fort Ross_Gerstle` %>% 
+#   round(digits = 4) %>% 
+#   slice_head(n = 10) %>% 
+#   rownames_to_column() %>% 
+#   flextable() %>% 
+#   flextable::set_caption("FRC vs GC")
   
 # Timber Cove vs. Ocean Cove
-summary(PISCO_all_ms_simper)[4]$Timber_Ocean %>% 
-  round(digits = 4) %>% 
-  slice_head(n = 10) %>% 
-  rownames_to_column() %>% 
-  flextable() %>% 
-  flextable::set_caption("TC vs OC")
+# summary(PISCO_all_ms_simper)[4]$Timber_Ocean %>% 
+#   round(digits = 4) %>% 
+#   slice_head(n = 10) %>% 
+#   rownames_to_column() %>% 
+#   flextable() %>% 
+#   flextable::set_caption("TC vs OC")
 
 
 ```
@@ -410,10 +409,10 @@ centroid <- PISCO_bio_ms_NMDS_sites |>
 ggplot(PISCO_bio_ms_NMDS_sites, aes(x = NMDS1, y = NMDS2, color = site, shape = year)) +
   # stat_ellipse() +
   annotate('text', x = 1.5, y = 1.2, label = paste('Stress =', round(PISCO_bio_ms_MDS1$stress, digits = 3))) +
-  geom_segment(data = sig_spp_scores2, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
+  # geom_segment(data = sig_spp_scores2, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
   # geom_point(size = 4, alpha = 0.7) +
-  annotate('text', size = 3, x = sig_spp_scores2$NMDS1, y = sig_spp_scores2$NMDS2, label = sig_spp_scores2$species, color = 'grey60') +
-  geom_point(data = centroid, size = 5) +
+  # annotate('text', size = 3, x = sig_spp_scores2$NMDS1, y = sig_spp_scores2$NMDS2, label = sig_spp_scores2$species, color = 'grey60') +
+  geom_point(data = centroid, size = 5, alpha = 0.01) +
   scale_shape_manual(values = c(16, 15)) + 
   scale_y_continuous(limits = c(-1.2, 1.3)) +
   scale_x_continuous(limits = c(-2.2, 1.9)) +
@@ -526,14 +525,14 @@ ggplot(PISCO_bio_site_NMDS_years, aes(x = NMDS1, y = NMDS2, color = year)) +
   # stat_ellipse() +
   annotate('text', x = 1.7, y = 0.98, label = paste('Stress =', round(PISCO_bio_site_MDS1$stress, digits = 3))) + #FRC 0.98 TC 1.3
   annotate('text', x = 1.7, y = 0.9, label = paste('P =', site_adonis$`Pr(>F)`[1])) + #FRC 0.9 TC 1.2
-  geom_segment(data = ind_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
-  geom_point(size = 5, alpha = 0) +
-  geom_point(data = centroid, size = 5) +
+  # geom_segment(data = ind_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
+  # geom_point(size = 5, alpha = 0) +
+  geom_point(data = centroid, size = 5, alpha = 0) +
   scale_y_continuous(limits = c(-1, 1)) + #FRC
   scale_x_continuous(limits = c(-1.6, 2)) + # FRC
   # scale_y_continuous(limits = c(-1.2, 1.4)) + # TC
   # scale_x_continuous(limits = c(-2.1, 2.3)) + # TC
-  annotate('text', size = 3, x = ind_spp_scores$NMDS1, y = ind_spp_scores$NMDS2, label = ind_spp_scores$species, color = 'grey60') +
+  # annotate('text', size = 3, x = ind_spp_scores$NMDS1, y = ind_spp_scores$NMDS2, label = ind_spp_scores$species, color = 'grey60') +
   theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12)) +
   scale_color_manual(values = divergent) +
   pres_theme
@@ -645,7 +644,7 @@ ggplot(PISCO_bio_site_NMDS_years, aes(x = NMDS1, y = NMDS2, color = year)) +
   annotate('text', x = 1.7, y = 1.2, label = paste('P =', site_adonis$`Pr(>F)`[1])) + #FRC 0.9 TC 1.2
   geom_segment(data = ind_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
   geom_point(size = 5, alpha = 0) +
-  # geom_point(data = centroid, size = 5) +
+  geom_point(data = centroid, size = 5) +
   scale_y_continuous(limits = c(-1.2, 1.4)) + # TC
   scale_x_continuous(limits = c(-2.1, 2.3)) + # TC
   annotate('text', size = 3, x = ind_spp_scores$NMDS1, y = ind_spp_scores$NMDS2, label = ind_spp_scores$species, color = 'grey60') +
