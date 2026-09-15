@@ -29,12 +29,21 @@ git push
 # remove a file?
 git rm filename.txt # not sure this is right
 
+## How to fix merge conflict ##
+Open your terminal and navigate to your local repository.Pull the latest changes from the remote branch to trigger the conflict locally: git pull origin <branch-name>
+Find the affected files by checking the Git status: git status
+Open the files in a text editor (like VS Code). Look for the <<<<<<<, =======, and >>>>>>> markers. Clean up the code by choosing which lines to keep, then delete the marker lines entirely. 
+Stage and commit your resolved files: 
+git add "filename"
+git commit -m "Resolve merge conflict"
+Push the changes back to your GitHub repository: git push origin <branch-name>
+
 ## Forking ##
 # Fork someone else's repo so you can make changes and then push them back to that person's repo.
 # This way, you can commit and push changes locally to a remote copy of the forked repo, and then ask to push them back to that person's repo in a "pull request."
 
-You can do this With usethis: usethis::create_from_github("OWNER/REPO", fork = TRUE)
+# You can do this With usethis: usethis::create_from_github("OWNER/REPO", fork = TRUE)
 
-Apparently this is not possible within git or RStudio (except as shown above?).
-Source: https://happygitwithr.com/common-remote-setups
-More detailed instructions: https://happygitwithr.com/fork-and-clone#fork-and-clone
+# Apparently this is not possible within git or RStudio (except as shown above?).
+# Source: https://happygitwithr.com/common-remote-setups
+# More detailed instructions: https://happygitwithr.com/fork-and-clone#fork-and-clone
