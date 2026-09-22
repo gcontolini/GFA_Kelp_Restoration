@@ -371,7 +371,7 @@ siteyear_disper <- betadisper(vegdist(PISCO_bio_ms_matrix_decostand), group = PI
 anova(siteyear_disper) # P = 0.0008
 
 # Prepping the species vectors
-spp_fit <- envfit(PISCO_bio_ms_MDS1, PISCO_bio_ms_matrix_decostand, permutations = 999) # there were 50+ warnings bc SD = 0.
+spp_fit <- envfit(PISCO_bio_ms_MDS1, PISCO_bio_ms_matrix_decostand, permutations = 999) # there were 50+ warnings bc SD = 0. envfit fits factors or vectors onto an ordination. The projections of points onto vectors have maximum correlation with corresponding variables, and the factors show the averages of factor levels. For continuous variables this is equal to fitting a linear trend surface for a variable (see ordisurf). This trend surface can be presented by showing its gradient using an arrow. The environmental varialbes are the dependent variables that are explained by the orignation scores, and each dependent variable is analyzed separately.
 spp_scores <- as.data.frame(scores(spp_fit, display = 'vectors'))
 spp_scores <- cbind(spp_scores, species = rownames(spp_scores))
 spp_scores <- cbind(spp_scores, pval = spp_fit$vectors$pvals)
@@ -407,12 +407,12 @@ centroid <- PISCO_bio_ms_NMDS_sites |>
 
 #NMDS plot 
 ggplot(PISCO_bio_ms_NMDS_sites, aes(x = NMDS1, y = NMDS2, color = site, shape = year)) +
-  # stat_ellipse() +
+  stat_ellipse() +
   annotate('text', x = 1.5, y = 1.2, label = paste('Stress =', round(PISCO_bio_ms_MDS1$stress, digits = 3))) +
-  # geom_segment(data = sig_spp_scores2, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
-  # geom_point(size = 4, alpha = 0.7) +
-  # annotate('text', size = 3, x = sig_spp_scores2$NMDS1, y = sig_spp_scores2$NMDS2, label = sig_spp_scores2$species, color = 'grey60') +
-  geom_point(data = centroid, size = 5, alpha = 0.01) +
+  geom_segment(data = sig_spp_scores2, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
+  geom_point(size = 4, alpha = 0.7) +
+  annotate('text', size = 3, x = sig_spp_scores2$NMDS1, y = sig_spp_scores2$NMDS2, label = sig_spp_scores2$species, color = 'grey60') +
+  geom_point(data = centroid, size = 5) +
   scale_shape_manual(values = c(16, 15)) + 
   scale_y_continuous(limits = c(-1.2, 1.3)) +
   scale_x_continuous(limits = c(-2.2, 1.9)) +
