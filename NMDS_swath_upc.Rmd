@@ -654,6 +654,108 @@ ggplot(PISCO_bio_site_NMDS_years, aes(x = NMDS1, y = NMDS2, color = year)) +
 
 ```
 
+```{r Fort Ross and Gerstle only; nmds, permanova, simper}
+
+##### Set the site you want #######
+select_site = c('Fort_Ross', 'Gerstle')
+select_years = c('2024', '2025')
+####################################
+
+# How did a single restoration site change over time?
+## create dissimilarity matrix for select sites only.
+
+PISCO_bio_contrast <- PISCO_bio_ms %>%
+  filter(site %in% select_site) %>% 
+  filter(year == select_years) %>%
+  mutate(year = as.factor(year))
+
+PISCO_bio_contrast_matrix <- PISCO_bio_contrast %>% 
+  select(transect_ID, classcode, observations) %>% 
+  # I want each col to be a classcode, rows to be IDs, and values to be observations.
+  pivot_wider(names_from = 'classcode', values_from = 'observations') %>% 
+  replace(is.na(.), 0) %>% # make any NA value into 0.
+  as.data.frame()
+
+PISCO_bio_contrast_matrix$transect_ID = NULL # remove transect_ID column
+
+## Convert absolute abundance to relative abundance to standardize
+PISCO_bio_contrast_matrix_decostand <- decostand(PISCO_bio_contrast_matrix, method = 'total') #
+
+set.seed(197128) # set seed to make sure the metaMDS repeats a best solution.
+PISCO_bio_contrast_MDS1 <- metaMDS(PISCO_bio_contrast_matrix_decostand, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.15
+
+## reformat so it can be plotted in ggplot with groupings.
+PISCO_bio_contrast_data_scores <- as.data.frame(scores(PISCO_bio_contrast_MDS1)$sites)
+
+## Add back identifier columns
+PISCO_bio_contrast_data_scores$transect_ID = unique(PISCO_bio_contrast$transect_ID) 
+
+# i want to join this with the sites and dates and stuff.
+PISCO_bio_contrast_site_years <- PISCO_bio_contrast %>%
+  dplyr::select(transect_ID, site, year) # just these cols
+dim(PISCO_bio_contrast_site_years) # check dimensions. 966 rows. remove duplicates for the join.
+PISCO_bio_contrast_site_years_distinct <- distinct(PISCO_bio_contrast_site_years)
+
+PISCO_bio_contrast_NMDS <- dplyr::inner_join(PISCO_bio_contrast_data_scores, PISCO_bio_contrast_site_years_distinct, by = 'transect_ID')
+# rownames(PISCO_bio_frc_matrix_decostand) = PISCO_bio_frc_NMDS_years$year
+
+# PERMANOVA
+contrast_adonis <- adonis2(PISCO_bio_contrast_matrix_decostand ~ PISCO_bio_contrast_NMDS$year, PISCO_bio_contrast_NMDS$site) # seems like bray-curtis is the default yay
+## no need to nest transectID in site here because it's only for one site!!
+contrast_adonis
+contrast_disper <- betadisper(
+  vegdist(PISCO_bio_contrast_matrix_decostand), 
+  # PISCO_bio_contrast_NMDS$year) # also try site? they don't seem to work together.
+  PISCO_bio_contrast_NMDS$site)
+anova(contrast_disper) #
+
+# SIMPER # WIP 
+# PISCO_bio_contrast_simper <- simper(PISCO_bio_contrast_matrix_decostand, group = PISCO_bio_contrast_NMDS$year)
+# PISCO_bio_contrast_simper
+# summary(PISCO_bio_contrast_simper)$`2021_2025`
+# spp90 <- summary(PISCO_bio_site_simper)$`2021_2025` %>% 
+#   filter(cumsum <= 0.9) %>% 
+#   rownames_to_column('species') |> 
+#   select(species)
+
+
+## Indicator species
+PISCO_bio_contrast_NMDS <- PISCO_bio_contrast_NMDS |> mutate(siteyear = paste(site,year, sep = "_"))# Make siteyear col
+indicators <- multipatt(PISCO_bio_contrast_matrix_decostand, PISCO_bio_contrast_NMDS$siteyear)
+summary(indicators) # can't figure out how to pull the species, so I'll just manually do it.
+indicator_spp <- c('BALNUB', 'ANTSOL','CORCAL','PHRCAL') # 
+
+# Prepping the species vectors
+spp_fit <- envfit(PISCO_bio_contrast_MDS1, PISCO_bio_contrast_matrix_decostand, permutations = 999) # there were 50+ warnings bc SD = 0.
+spp_scores <- as.data.frame(scores(spp_fit, display = 'vectors')) |> 
+  rownames_to_column('species')
+ind_spp_scores <- subset(spp_scores, species %in% c(indicator_spp, 'STRPUR', 'NERLUE'))
+bar_for_spp_scores <- subset(spp_scores, species %in% bar_for_spp)
+ind_spp_scores$site = 'Fort_Ross' # just put one so it plots
+ind_spp_scores$year = '2024' # just put one so it plots
+
+# calculate centroid
+centroid <- PISCO_bio_contrast_NMDS |> 
+  group_by(site, year) |> 
+  summarise(NMDS1 = mean(NMDS1), NMDS2 = mean(NMDS2))
+
+# NMDS plot
+ggplot(PISCO_bio_contrast_NMDS, aes(x = NMDS1, y = NMDS2, color = site, shape = year)) +
+  stat_ellipse() +
+  annotate('text', x = 1.7, y = 1.8, label = paste('Stress =', round(PISCO_bio_contrast_MDS1$stress, digits = 3))) +
+  annotate('text', x = 1.7, y = 1.6, label = paste('P =', site_adonis$`Pr(>F)`[1])) + #FRC 0.9 TC 1.2
+  geom_segment(data = ind_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
+  geom_point(size = 5) +
+  # geom_point(data = centroid, size = 5) +
+  # scale_y_continuous(limits = c(-1.2, 1.4)) + # TC
+  # scale_x_continuous(limits = c(-2.1, 2.3)) + # TC
+  annotate('text', size = 3, x = ind_spp_scores$NMDS1, y = ind_spp_scores$NMDS2, label = ind_spp_scores$species, color = 'grey60') +
+  theme(axis.title = element_text(size = 12), axis.text = element_text(size = 12)) +
+  scale_color_manual(values = divergent) +
+  pres_theme
+
+```
+
 ```{plots of median kelp and urchins. run subtidal_swath.Rmd first}
 # simple plot showing medians for a background slide. must run subtidal_swath.Rmd first.
 
