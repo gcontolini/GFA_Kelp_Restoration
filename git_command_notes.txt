@@ -30,7 +30,7 @@ git push
 git rm filename.txt # not sure this is right
 
 ## How to fix merge conflict ##
-Open your terminal and navigate to your local repository.Pull the latest changes from the remote branch to trigger the conflict locally: git pull origin <branch-name>
+Open your terminal and navigate to your local repository. Pull the latest changes from the remote branch to trigger the conflict locally: git pull origin <branch-name>
 Find the affected files by checking the Git status: git status
 Open the files in a text editor (like VS Code). Look for the <<<<<<<, =======, and >>>>>>> markers. Clean up the code by choosing which lines to keep, then delete the marker lines entirely. 
 Stage and commit your resolved files: 
