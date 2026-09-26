@@ -422,6 +422,16 @@ ggplot(PISCO_bio_ms_NMDS_sites, aes(x = NMDS1, y = NMDS2, color = site, shape = 
 # ok this is weird because STRPUR, ENCRED, and CRUCOR are all in opposite directions!!! #***
 ```
 
+```{r check for effects of standardization with UPC}
+
+# What if we do the NMDS without standardizing. Would that make crucor, encred, and strpur be correlated?
+
+
+
+test <- PISCO_bio_ms_matrix[c(1, 2, 22, 33, 44),]
+
+
+```
 # Site specific analyses
 ```{r Fort Ross only; nmds, permanova, simper}
 PISCO_bio_ms <- PISCO_all_ms %>% 
