@@ -20,6 +20,12 @@ git ls-files
 git status 
 # shows if you are working on a branch or if you're up to date with main.
 
+## How to use blue text (Vim) mode, which is a command-line text editor.
+# 1. press i (for insert). It should say insert at the bottom left.
+# 2. make your edits
+# 3. press : to get out of insert mode and back to the command line.
+# 4. press wq (for write then quit)
+
 ## Workflow ##
 # do some work, then add something you worked on
 git add filename.Rmd
