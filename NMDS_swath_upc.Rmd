@@ -217,7 +217,7 @@ PISCO_all_ms_simper
 PISCO_bio_ms %>% 
   filter(classcode %in% c('STRPUR', 'NERLUE', 'PATMIN', 'PTECALAD')) %>% 
   count(year, site, transect_ID) %>% 
-  filter(!n == 4) #lookin good. 
+  filter(!n == 4) #lookin good. ok I want it to say 0. cool.
 
 PISCO_bio_ms %>%
   count(transect_ID, classcode) %>%
@@ -272,7 +272,6 @@ PISCO_bio_ms_matrix_decostand <- decostand(PISCO_bio_ms_matrix_decostand_total, 
 # avgdist(sample = PISCO_bio_ms_matrix_decostand) # calculates bray-curtis distances a set number of times and reports the average.
 
 # Do I want decostand method = total or max?? Total seems to be doing weird stuff with the urchin barren species, where crucor, encred, and strpur are all very unassociated, which is wrong. Trying max here.
-
 
 set.seed(1299271) # set seed to make sure the metaMDS repeats a best solution. # 1299217 repeating with 'max'. 1299271 repeated with wisconsin. 
 PISCO_bio_ms_MDS1 <- metaMDS(PISCO_bio_ms_matrix_decostand, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.139
@@ -427,7 +426,6 @@ ggplot(PISCO_bio_ms_NMDS_sites, aes(x = NMDS1, y = NMDS2, color = site, shape = 
 
 # What if we do the NMDS without standardizing. Would that make crucor, encred, and strpur be correlated?
 
-
 # What if we standardize species to the totals per species type, or column, not per transect, or row?
 ## The problem is the stress value is too high on the MDS when I do this.
 
@@ -560,6 +558,7 @@ PISCO_bio_ms <- PISCO_all_ms %>%
   filter(!classcode %in% c("BEDRK", "BOULD", "SAND", "COB", '0-10cm', '10cm-1m', '1m-2m', '>2m', 'BARROC', 'BARSAN', 'DEADHOLD', 'SHELL')) #remake this to make sure anything I changed above doesn't carry over.
 ##### Set the site you want #######
 select_site = 'Fort_Ross'
+# select_site %in% c('Fort_Ross', 'Gerstle')
 ####################################
 
 # How did a single restoration site change over time?
@@ -634,7 +633,7 @@ spp90 <- summary(PISCO_bio_site_simper)$`2021_2025` %>%
 ## Indicator species
 indicators <- multipatt(PISCO_bio_site_matrix_decostand, PISCO_bio_site_NMDS_years$year)
 summary(indicators) # can't figure out how to pull the species, so I'll just manually do it.
-indicator_spp <- c('NERLUE','DESSPP','TETAUR','LACY','CORCAL','LEAFY','HENLEV','PISBRE','CUCSPP', 'HALRUF') # Fort Ross
+indicator_spp_frc <- c('NERLUE','DESSPP','TETAUR','LACY','CORCAL','LEAFY','HENLEV','PISBRE','CUCSPP', 'HALRUF') # Fort Ross
 # indicator_spp <- c('NERLUE','NERLUEJUV','LAMREC','HALKAM','PISGIG','DERIMB','PISOCH') # Timber
 bar_for_spp <- c('STRPUR', 'ENCRED', 'CRUCOR', 'PATMIN', 'NERLUE', 'NERLUEJUV', 'LAMREC', 'LAMSET', 'LAMSPP') # barren + forest species
 
@@ -642,7 +641,7 @@ bar_for_spp <- c('STRPUR', 'ENCRED', 'CRUCOR', 'PATMIN', 'NERLUE', 'NERLUEJUV', 
 spp_fit <- envfit(PISCO_bio_site_MDS1, PISCO_bio_site_matrix_decostand, permutations = 999) # there were 50+ warnings bc SD = 0.
 spp_scores <- as.data.frame(scores(spp_fit, display = 'vectors')) |> 
   rownames_to_column('species')
-ind_spp_scores <- subset(spp_scores, species %in% c(indicator_spp, 'STRPUR' ,'NERLUE'))
+ind_spp_scores <- subset(spp_scores, species %in% c(indicator_spp_frc, 'STRPUR' ,'NERLUE'))
 bar_for_spp_scores <- subset(spp_scores, species %in% bar_for_spp)
 # spp_scores <- cbind(spp_scores, pval = spp_fit$vectors$pvals)
 # sig_spp_scores <- subset(spp_scores, pval <= 0.05) %>% arrange(pval) # this is where it filters for P <= 0.05
@@ -654,12 +653,12 @@ centroid <- PISCO_bio_site_NMDS_years |>
 
 # NMDS plot
 ggplot(PISCO_bio_site_NMDS_years, aes(x = NMDS1, y = NMDS2, color = year)) +
-  # stat_ellipse() +
+  stat_ellipse() +
   annotate('text', x = 1.7, y = 0.98, label = paste('Stress =', round(PISCO_bio_site_MDS1$stress, digits = 3))) + #FRC 0.98 TC 1.3
   annotate('text', x = 1.7, y = 0.9, label = paste('P =', site_adonis$`Pr(>F)`[1])) + #FRC 0.9 TC 1.2
   geom_segment(data = ind_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
-  # geom_point(size = 5, alpha = 0) +
-  geom_point(data = centroid, size = 5, alpha = 0) +
+  geom_point(size = 3, alpha = 0.3) +
+  geom_point(data = centroid, size = 5, alpha = 1) +
   scale_y_continuous(limits = c(-1, 1)) + #FRC
   scale_x_continuous(limits = c(-1.6, 2)) + # FRC
   # scale_y_continuous(limits = c(-1.2, 1.4)) + # TC
@@ -798,7 +797,7 @@ select_years = c('2024', '2025')
 
 PISCO_bio_contrast <- PISCO_bio_ms %>%
   filter(site %in% select_site) %>% 
-  filter(year == select_years) %>%
+  # filter(year == select_years) %>%
   mutate(year = as.factor(year))
 
 PISCO_bio_contrast_matrix <- PISCO_bio_contrast %>% 
@@ -855,7 +854,7 @@ anova(contrast_disper) #
 PISCO_bio_contrast_NMDS <- PISCO_bio_contrast_NMDS |> mutate(siteyear = paste(site,year, sep = "_"))# Make siteyear col
 indicators <- multipatt(PISCO_bio_contrast_matrix_decostand, PISCO_bio_contrast_NMDS$siteyear)
 summary(indicators) # can't figure out how to pull the species, so I'll just manually do it.
-indicator_spp <- c('BALNUB', 'ANTSOL','CORCAL','PHRCAL') # 
+indicator_spp <- c('NERLUE', 'DESSPP', 'TETAUR', 'LACY', 'CORCAL', 'LEAFY', 'HENLEV', 'PISBRE', 'CUCSPP', 'HALRUF') # 
 
 # Prepping the species vectors
 spp_fit <- envfit(PISCO_bio_contrast_MDS1, PISCO_bio_contrast_matrix_decostand, permutations = 999) # there were 50+ warnings bc SD = 0.
@@ -872,12 +871,12 @@ centroid <- PISCO_bio_contrast_NMDS |>
   summarise(NMDS1 = mean(NMDS1), NMDS2 = mean(NMDS2))
 
 # NMDS plot
-ggplot(PISCO_bio_contrast_NMDS, aes(x = NMDS1, y = NMDS2, color = site, shape = year)) +
-  stat_ellipse() +
-  annotate('text', x = 1.7, y = 1.8, label = paste('Stress =', round(PISCO_bio_contrast_MDS1$stress, digits = 3))) +
-  annotate('text', x = 1.7, y = 1.6, label = paste('P =', site_adonis$`Pr(>F)`[1])) + #FRC 0.9 TC 1.2
+ggplot(PISCO_bio_contrast_NMDS, aes(x = NMDS1, y = NMDS2, color = year, shape = site)) +
+  # stat_ellipse() +
+  annotate('text', x = 0.8, y = 0.8, label = paste('Stress =', round(PISCO_bio_contrast_MDS1$stress, digits = 3))) +
+  # annotate('text', x = 1.7, y = 1.6, label = paste('P =', site_adonis$`Pr(>F)`[1])) + #FRC 0.9 TC 1.2
   geom_segment(data = ind_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
-  geom_point(size = 5, alpha = 0) +
+  geom_point(size = 3, alpha = 0.3) +
   geom_point(data = centroid, size = 5) +
   # scale_y_continuous(limits = c(-1.2, 1.4)) + # TC
   # scale_x_continuous(limits = c(-2.1, 2.3)) + # TC
@@ -888,7 +887,7 @@ ggplot(PISCO_bio_contrast_NMDS, aes(x = NMDS1, y = NMDS2, color = site, shape = 
 
 ```
 
-```{r Fort Ross and Gerstle only; nmds, permanova, simper}
+```{r Timber and Ocean only; nmds, permanova, simper}
 
 ##### Set the site you want #######
 select_site = c('Timber', 'Ocean')
@@ -900,7 +899,7 @@ select_years = c('2024', '2025')
 
 PISCO_bio_contrast <- PISCO_bio_ms %>%
   filter(site %in% select_site) %>% 
-  filter(year == select_years) %>%
+  # filter(year == select_years) %>%
   mutate(year = as.factor(year))
 
 PISCO_bio_contrast_matrix <- PISCO_bio_contrast %>% 
@@ -957,7 +956,9 @@ anova(contrast_disper) #
 PISCO_bio_contrast_NMDS <- PISCO_bio_contrast_NMDS |> mutate(siteyear = paste(site,year, sep = "_"))# Make siteyear col
 indicators <- multipatt(PISCO_bio_contrast_matrix_decostand, PISCO_bio_contrast_NMDS$siteyear)
 summary(indicators) # can't figure out how to pull the species, so I'll just manually do it.
-indicator_spp <- c('BARNAC', 'DODSPP','PTECALAD','HYDROID') # 
+indicator_spp <- c('URTCOL', 'NERLUEJUV','PISGIG' #TC
+                   ,'BALNUB', 'ALAMAR', 'BARNAC', 'LEPSPP', 'DODSPP', 'HYDROID', #OC 
+                   'CUCMIN', 'PETCALAD', 'PTECALJUV', 'LAMREC', 'LAMHOLD', 'DERIMB', 'PISOCH') # 
 
 # Prepping the species vectors
 spp_fit <- envfit(PISCO_bio_contrast_MDS1, PISCO_bio_contrast_matrix_decostand, permutations = 999) # there were 50+ warnings bc SD = 0.
@@ -974,12 +975,13 @@ centroid <- PISCO_bio_contrast_NMDS |>
   summarise(NMDS1 = mean(NMDS1), NMDS2 = mean(NMDS2))
 
 # NMDS plot
-ggplot(PISCO_bio_contrast_NMDS, aes(x = NMDS1, y = NMDS2, color = site, shape = year)) +
-  stat_ellipse() +
-  annotate('text', x = 2.9, y = 2.8, label = paste('Stress =', round(PISCO_bio_contrast_MDS1$stress, digits = 3))) +
-  annotate('text', x = 2.9, y = 2.6, label = paste('P =', site_adonis$`Pr(>F)`[1])) + #FRC 0.9 TC 1.2
+ggplot(PISCO_bio_contrast_NMDS, aes(x = NMDS1, y = NMDS2, color = year, shape = site)) +
+  scale_shape_manual(values = c(15, 18)) + 
+  # stat_ellipse() +
+  annotate('text', x = 1.2, y = 0.8, label = paste('Stress =', round(PISCO_bio_contrast_MDS1$stress, digits = 3))) +
+  # annotate('text', x = 2.9, y = 2.6, label = paste('P =', site_adonis$`Pr(>F)`[1])) + #FRC 0.9 TC 1.2
   geom_segment(data = ind_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
-  geom_point(size = 5, alpha = 0) +
+  geom_point(size = 3, alpha = 0.3) +
   geom_point(data = centroid, size = 5) +
   # scale_y_continuous(limits = c(-1.2, 1.4)) + # TC
   # scale_x_continuous(limits = c(-2.1, 2.3)) + # TC
@@ -989,7 +991,6 @@ ggplot(PISCO_bio_contrast_NMDS, aes(x = NMDS1, y = NMDS2, color = site, shape = 
   pres_theme
 
 ```
-
 
 ```{plots of median kelp and urchins. run subtidal_swath.Rmd first}
 # simple plot showing medians for a background slide. must run subtidal_swath.Rmd first.
