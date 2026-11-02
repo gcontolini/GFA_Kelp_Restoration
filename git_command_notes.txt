@@ -25,6 +25,7 @@ git status
 # 2. make your edits
 # 3. press : to get out of insert mode and back to the command line.
 # 4. press wq (for write then quit)
+# 5. hit enter!
 
 ## Workflow ##
 # do some work, then add something you worked on
