@@ -1,6 +1,13 @@
 ## Start the workflow in git ##
 ## This website is really helpful. https://happygitwithr.com/git-commands ##
 
+## Instructions for getting started on new machine! ##
+# Change working directory to Documents folder.
+cd "C:\Users\Gina.Contolini\DOcuments"
+# Clone repo
+git clone https://github.com/gcontolini/GFA_Kelp_Restoration.git
+
+## Helpful commands after you're done cloning. ##
 # Add from remote. 
 git remote add origin https://github.com/gcontolini/GFA_Kelp_Restoration.git
 # open the directory locally
