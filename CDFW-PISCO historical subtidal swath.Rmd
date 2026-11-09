@@ -50,11 +50,11 @@ sizes_pisco <- read_csv('PISCO_kelpforest_swath.1.11.csv')
 ```
 
 ```{r summarize CDFW densities}
-locations %>% 
+cdfw_locations %>% 
   filter(SiteName %in% c('Timber Cove', 'Fort Ross State Park (inside MPA)', 'Ocean Cove', 'Salt Point State Park (Gerstle Cove no take MPA)', 'Salt Point State Park (North)', 'Salt Point State Park (South)')) %>% 
   flextable()
 
-counts %>% 
+cdfw_counts %>% 
   # filter(SpeciesID == 'U11') %>% 
   filter(DFW_short_code %in% c('TC', 'FR', 'OC', 'SPnotake', 'SPin', 'SPout')) %>% 
   group_by(Year, DFW_short_code) %>% 
@@ -91,7 +91,7 @@ urchin_transects %>%
 ```
 
 ```{r add implicit zeros to CDFW data}
-cdfw_den <- counts %>% # formerly site_counts
+cdfw_den <- cdfw_counts %>% # formerly site_counts
   rename(site = DFW_short_code, count = Count, year = Year, month = Month, day = Day) %>% 
   filter(site %in% c('TC', 'FR', 'OC', 'SPnotake')) %>% 
   select(site, year, month, day, SurveyNum, SpeciesID, count) %>% 
