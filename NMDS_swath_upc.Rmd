@@ -827,8 +827,6 @@ PISCO_bio_contrast_matrix_total_nozeros <-
 
 PISCO_bio_contrast_matrix_decostand <- decostand(PISCO_bio_contrast_matrix_total_nozeros, method = 'max') # 'max' divides everything by col totals.#*** not working because there are some species with all 0s I think. # which cols are all 0s?
 
-
-
 set.seed(197128) # set seed to make sure the metaMDS repeats a best solution.
 PISCO_bio_contrast_MDS1 <- metaMDS(PISCO_bio_contrast_matrix_decostand, distance = 'bray') # stress value should be between 0 and 0.2 according to https://jkzorz.github.io/2019/06/06/NMDS.html.# My stress value is 0.15
 
@@ -848,8 +846,12 @@ PISCO_bio_contrast_NMDS <- dplyr::inner_join(PISCO_bio_contrast_data_scores, PIS
 # rownames(PISCO_bio_frc_matrix_decostand) = PISCO_bio_frc_NMDS_years$year
 
 # PERMANOVA
-contrast_adonis <- adonis2(PISCO_bio_contrast_matrix_decostand ~ PISCO_bio_contrast_NMDS$year, PISCO_bio_contrast_NMDS$site) # seems like bray-curtis is the default yay
-## no need to nest transectID in site here because it's only for one site!!
+contrast_adonis <- adonis2(PISCO_bio_contrast_matrix_decostand ~ site * year,
+                           strata = PISCO_bio_contrast_NMDS$site, # accounts for transects nested in sites
+                           data = PISCO_bio_contrast_NMDS, 
+                           by = 'terms'
+                           ) # seems like bray-curtis is the default yay
+
 contrast_adonis
 contrast_disper <- betadisper(
   vegdist(PISCO_bio_contrast_matrix_decostand), 
