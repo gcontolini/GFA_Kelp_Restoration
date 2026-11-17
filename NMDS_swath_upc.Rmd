@@ -895,7 +895,7 @@ ggplot(PISCO_bio_contrast_NMDS, aes(x = NMDS1, y = NMDS2, color = year, shape = 
   # stat_ellipse() +
   annotate('text', x = 0.8, y = 0.8, label = paste('Stress =', round(PISCO_bio_contrast_MDS1$stress, digits = 3))) +
   # annotate('text',x = 0.8, y = 0.6,label = paste('P =', contrast_adonis$`Pr(>F)`[1])) + 
-  annotate('text', x = 0.8, y = 0.7, label = 'decostand double') + 
+  # annotate('text', x = 0.8, y = 0.7, label = 'decostand double') + 
   geom_segment(data = ind_spp_scores, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2), color = 'grey80', arrow = arrow(length = unit(0.2, "cm")), lwd = 0.3) +
   geom_point(size = 3, alpha = 0.3) +
   geom_point(data = centroid, size = 5) +
