@@ -307,8 +307,6 @@ cdfw_pisco_psu_mean_den <- bind_rows(pisco_psu_den, cdfw_psu_den) %>%
   mutate(heatwave = if_else(year > 2012,'post', 'pre')
   )
 
-
-
 # table summary
 ## I want average PSU density 2004 to 2012, then average post 2012.
 cdfw_pisco_psu_mean_den %>% 
@@ -364,14 +362,6 @@ ggplot(rcca_psu_den_mean, aes(x = year, y = mean_den, color = site)) +
 
 ## Add RCCA to CDFW and PISCO
 cdfw_pisco_rcca_psu_mean_den <- rbind(cdfw_pisco_psu_mean_den, rcca_psu_den_mean)
-
-# Bull kelp densities
-rcca_bullkelp_den <- rcca_algae |> 
-  filter(Classcode == 'Bull Kelp') |> 
-  filter(Site %in% c('Fort Ross', 'Gerstle Cove', 'Timber Cove', 'Ocean Cove')) |> 
-  mutate(density_m2 = Amount / (Distance*2)) |> 
-  select(Year, Site, density_m2) 
-
 ```
 
 # GFA data
@@ -409,7 +399,6 @@ ggplot(cdfw_pisco_rcca_gfa_psu_mean_den, aes(x = year, y = mean_den, color = sou
 
 # Average psu density of all transects across all groups per year
 ```{r}
-
 # reclassify the site names so it's specific to just our sites of interest. Then just take averages across all data with those sites.
 
 # RCCA just has them regular. cool.
@@ -438,9 +427,53 @@ all_groups_sites_psu_mean |>
   labs(y = bquote(paste('Purple urchin density (# ',~m^-2, ')')), x = 'Year') +
   scale_x_continuous(breaks = seq(1999, 2025, 1)) +
   theme(legend.position = c(.17, .7), axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1), axis.ticks.x = element_line(), panel.grid = element_blank()) 
-  
 
 # How to display site specific data when the historical data doesn't have that?
 # Could display site-specific where it exists. So everything but PISCO has that I think!
+```
+
+# Repeat with subtidal bull kelp densities
+```{r}
+gfa_kelp_den <- read_csv('gfa_kelp_den.csv')
+
+pisco_kelp_den
+# cdfw_den_complete # ah I think they didn't do kelp counts, it was percent cover.
+
+rcca_bullkelp_den <- rcca_algae |> 
+  filter(Classcode == 'Bull Kelp') |> 
+  filter(Site %in% c('Fort Ross', 'Gerstle Cove', 'Timber Cove', 'Ocean Cove')) |> 
+  mutate(density_m2 = Amount / (Distance*2)) |> 
+  select(Year, Site, density_m2) 
+
+gfa_kelp_combine <- gfa_kelp_den |> 
+  select(year, site, den_m2) |> 
+  rename(density_m2 = den_m2)
+
+pisco_kelp_combine <- pisco_kelp_den |> 
+  select(year, site, mean_den) |> 
+  filter(site == 'SALT_POINT_REFERENCE_5') |> 
+  mutate(site = 'Ocean') |> 
+  rename(density_m2 = mean_den)
+
+rcca_kelp_combine <- rcca_bullkelp_den |> 
+  rename(year = Year) |> 
+  mutate(site = if_else(Site %in% c('Timber Cove'), 'Timber', Site)) |> 
+  mutate(site = if_else(Site %in% c('Fort Ross Cove'), 'Fort Ross', site)) |> 
+  mutate(site = if_else(Site %in% c('Ocean Cove'), 'Ocean', site)) |> 
+  mutate(site = if_else(Site %in% c('Gerstle Cove'), 'Gerstle', site)) |> 
+  mutate(Site = NULL)
+
+gpr_kelp_combine <- rbind(gfa_kelp_combine, pisco_kelp_combine, rcca_kelp_combine) |> 
+  group_by(year, site) |> 
+  summarise(mean_den = mean(density_m2), sd = sd(density_m2), n = n())
+
+ggplot(gpr_kelp_combine, aes(x = year, y = mean_den, color = site)) +
+  geom_rect(aes(xmin = 2022.5, xmax = Inf, ymin = -Inf, ymax = Inf), fill = 'grey90', show.legend = FALSE, color = NULL) +
+  geom_errorbar(aes(ymin =mean_den -sd, ymax = mean_den + sd, width = 0), position = position_dodge(0.5)) +
+  geom_point(size = 4, position = position_dodge(0.5)) +
+  geom_line(, position = position_dodge(0.5))+
+  labs(y = bquote(paste('Bull kelp density (# ',~m^-2, ')')), x = 'Year') +
+  scale_x_continuous(breaks = seq(1999, 2025, 1)) +
+  theme(legend.position = c(.7, .7), axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1), axis.ticks.x = element_line(), panel.grid = element_blank()) 
 ```
 
