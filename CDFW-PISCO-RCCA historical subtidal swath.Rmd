@@ -353,30 +353,17 @@ rcca_psu_den_mean <- rcca_invert |>
   mutate(se = sd/sqrt(n)) |> 
   mutate(source = 'RCCA') |> 
   mutate(source_site = paste(source, site, sep = '_')) |> 
-  mutate(month = NA, day = NA) |> 
+  # mutate(month = NA, day = NA) |> 
   mutate(year_factor = factor(year)) |> 
   mutate(heatwave = if_else(year > 2012, 'post', 'pre'))
 
 ggplot(rcca_psu_den_mean, aes(x = year, y = mean_den, color = site)) +
-  geom_errorbar(aes(ymin = mean_den - sd_den, ymax = mean_den + sd_den, width = 0), alpha = 0.3) +
+  geom_errorbar(aes(ymin = mean_den - sd, ymax = mean_den + sd, width = 0), alpha = 0.3) +
   geom_point(size = 4) +
   geom_line()
 
 ## Add RCCA to CDFW and PISCO
 cdfw_pisco_rcca_psu_mean_den <- rbind(cdfw_pisco_psu_mean_den, rcca_psu_den_mean)
-
-
-ggplot(cdfw_pisco_rcca_psu_mean_den, aes(x = year, y = mean_den, color = source_site)) +
-  geom_rect(aes(xmin = 2022.5, xmax = Inf, ymin = -Inf, ymax = Inf), fill = 'grey90', show.legend = FALSE, color = NULL) +
-  geom_errorbar(aes(ymin = mean_den - se, ymax = mean_den + se), width = 0, alpha = 0.2) +
-  geom_point(size = 3) +
-  geom_line() +
-  scale_x_continuous(breaks = seq(1999, 2024, 1)) +
-  scale_y_continuous(breaks = seq(0, 50, 5)) +
-  coord_cartesian(ylim = c(0, 50)) + # prevents the scale from showing the full error bar
-  theme_bw() +
-  theme(legend.position = c(.17, .6), axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1), axis.ticks.x = element_line(), panel.grid = element_blank()) +
-  ggtitle('Purple sea urchin densities')
 
 # Bull kelp densities
 rcca_bullkelp_den <- rcca_algae |> 
@@ -385,11 +372,61 @@ rcca_bullkelp_den <- rcca_algae |>
   mutate(density_m2 = Amount / (Distance*2)) |> 
   select(Year, Site, density_m2) 
 
+```
+
+# GFA data
+```{r add GFA data to the historical data}
+
+# needs to match this 
+glimpse(cdfw_pisco_rcca_psu_mean_den)
+
+gfa_psu_den <- read_csv('GFA_psu_den.csv')
+
+gfa_psu_den_mean <- gfa_psu_den |> 
+  filter(year < 2026) |> 
+  filter(site %in% c('Fort Ross', 'Gerstle', 'Ocean', 'Timber')) |> 
+  filter(classcode == 'STRPUR') |> 
+  group_by(site, year) |> 
+  summarise(mean_den = mean(den_m2_corrected), sd = sd(den_m2_corrected), n = n()) |> 
+  mutate(se = sd / sqrt(n), source = 'GFA', heatwave = if_else(year > 2012,'post', 'pre'), year_factor = factor(year)) |> 
+  mutate(source_site = paste(source, site, sep = "_")) 
+
+cdfw_pisco_rcca_gfa_psu_mean_den <- rbind(cdfw_pisco_rcca_psu_mean_den, gfa_psu_den_mean)
+
+ggplot(cdfw_pisco_rcca_gfa_psu_mean_den, aes(x = year, y = mean_den, color = source_site)) +
+  geom_rect(aes(xmin = 2022.5, xmax = Inf, ymin = -Inf, ymax = Inf), fill = 'grey90', show.legend = FALSE, color = NULL) +
+  geom_errorbar(aes(ymin = mean_den - se, ymax = mean_den + se), width = 0, alpha = 0.2) +
+  geom_point(size = 3) +
+  geom_line() +
+  scale_x_continuous(breaks = seq(1999, 2025, 1)) +
+  scale_y_continuous(breaks = seq(0, 50, 5)) +
+  coord_cartesian(ylim = c(0, 50)) + # prevents the scale from showing the full error bar
+  theme_bw() +
+  theme(legend.position = c(.17, .5), axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1), axis.ticks.x = element_line(), panel.grid = element_blank()) +
+  ggtitle('Purple sea urchin densities')
 
 ```
 
-```{r add GFA data to the historical data}
+# Average of all transects across all groups
+```{r}
+cdfw_pisco_rcca_gfa_psu_mean_den |> 
+  group_by(year, source) |> 
+  summarise(mean_den = mean(mean_den), sd = mean_den, n = n()) |> 
+  ggplot(aes(x = year, y = mean_den, color = source)) +
+  geom_errorbar(aes(ymin = mean_den - sd, ymax = mean_den + sd, width = 0), alpha = 0.5, position = position_dodge(0.5)) +
+  geom_point(size = 4, position = position_dodge(0.5)) +
+  geom_line()
 
 
+cdfw_pisco_rcca_gfa_psu_mean_den |> 
+  group_by(year) |> 
+  summarise(mean_den = mean(mean_den), sd = mean_den, n = n()) |> 
+  ggplot(aes(x = year, y = mean_den)) +
+  geom_errorbar(aes(ymin = mean_den - sd, ymax = mean_den + sd, width = 0), alpha = 0.7, position = position_dodge(0.5)) +
+  geom_point(size = 4, position = position_dodge(0.5)) +
+  geom_line() +
+  scale_x_continuous(breaks = seq(1999, 2025, 1)) +
+  theme(legend.position = c(.17, .5), axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1), axis.ticks.x = element_line(), panel.grid = element_blank()) 
+  
 ```
 
