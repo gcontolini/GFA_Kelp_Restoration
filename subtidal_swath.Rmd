@@ -22,7 +22,7 @@ library(car)
 library(vegan) # for rarefaction
 library(googlesheets4) # to read in a spreadsheet directly from Google Drive
 library(gitcreds) # use with git
-library(usethis) # use with git
+# library(usethis) # use with git
 
 urchin_purple = 'mediumpurple1'
 urchin_red = 'tomato'
@@ -895,6 +895,9 @@ medianpsu %>%
   flextable() %>% 
   colformat_double(j = c('median', 'min', 'max','mean', 'sd'), digits = 2) %>% 
   flextable::set_caption("Summary of purple urchin densities in number per meter squared at all sites.")
+
+# write the psu data so I can upload it into other scripts.
+write_csv(swath_target_den_purp, 'GFA_psu_den.csv')
 
 ```
 
