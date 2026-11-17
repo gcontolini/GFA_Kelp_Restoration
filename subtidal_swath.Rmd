@@ -1089,7 +1089,6 @@ size_sums_purp %>%
   labs(x = 'Year', y  = 'Diameter (cm)') +
   my_theme +
   theme(strip.background = element_rect(fill = 'mediumpurple1'), strip.text = element_text(size = 20))
-  
 
 # print the flextable showing sample sizes
 size_sums_purp_site_year %>% 
@@ -1314,6 +1313,8 @@ mediansk %>%
   flextable()  %>% 
   colformat_double(j = c('median', 'min', 'max','mean', 'sd'), digits = 2) %>% 
   flextable::set_caption("Summary of subtidal kelp density in number per meter squared by site and year")
+
+write_csv(swath_target_den_kelp, 'gfa_kelp_den.csv')
 
 ```
 
