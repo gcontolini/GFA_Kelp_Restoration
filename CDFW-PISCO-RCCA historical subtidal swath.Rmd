@@ -15,6 +15,9 @@ editor_options:
 knitr::opts_chunk$set(echo = FALSE)
 library(tidyverse)
 library(flextable)
+library(scales) # for color palettes
+viridis <- pal_viridis(begin = 0, end = 1)(4)
+viridis[4] = 'orange'
 ```
 
 ```{r load data}
@@ -421,12 +424,15 @@ all_groups_sites_psu_mean |>
   summarise(mean_den = mean(mean_den), sd = mean_den, n = n()) |> 
   ggplot(aes(x = year, y = mean_den, color = Site)) +
   geom_rect(aes(xmin = 2022.5, xmax = Inf, ymin = -Inf, ymax = Inf), fill = 'grey90', show.legend = FALSE, color = NULL) +
+  geom_vline(xintercept = 2013, color = 'plum', linewidth = 4) +
   geom_errorbar(aes(ymin = mean_den - sd, ymax = mean_den + sd, width = 0), alpha = 0.5, position = position_dodge(0.5)) +
   geom_point(size = 4, position = position_dodge(0.5)) +
   geom_line() +
+  scale_color_manual(values = viridis) +
   labs(y = bquote(paste('Purple urchin density (# ',~m^-2, ')')), x = 'Year') +
   scale_x_continuous(breaks = seq(1999, 2025, 1)) +
-  theme(legend.position = c(.17, .7), axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1), axis.ticks.x = element_line(), panel.grid = element_blank()) 
+  theme_bw() +
+  theme(legend.position = c(.09, .76), axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1), axis.ticks.x = element_line(), panel.grid = element_blank()) 
 
 # How to display site specific data when the historical data doesn't have that?
 # Could display site-specific where it exists. So everything but PISCO has that I think!
@@ -446,8 +452,9 @@ rcca_bullkelp_den <- rcca_algae |>
   select(Year, Site, density_m2) 
 
 gfa_kelp_combine <- gfa_kelp_den |> 
-  select(year, site, den_m2) |> 
-  rename(density_m2 = den_m2)
+  filter(site %in% c('Timber', 'Fort Ross', 'Gerstle', 'Ocean')) |> 
+  select(year, site, den_m2_corrected) |> 
+  rename(density_m2 = den_m2_corrected)
 
 pisco_kelp_combine <- pisco_kelp_den |> 
   select(year, site, mean_den) |> 
@@ -464,16 +471,21 @@ rcca_kelp_combine <- rcca_bullkelp_den |>
   mutate(Site = NULL)
 
 gpr_kelp_combine <- rbind(gfa_kelp_combine, pisco_kelp_combine, rcca_kelp_combine) |> 
+  filter(year < 2026) |> 
   group_by(year, site) |> 
   summarise(mean_den = mean(density_m2), sd = sd(density_m2), n = n())
 
 ggplot(gpr_kelp_combine, aes(x = year, y = mean_den, color = site)) +
   geom_rect(aes(xmin = 2022.5, xmax = Inf, ymin = -Inf, ymax = Inf), fill = 'grey90', show.legend = FALSE, color = NULL) +
   geom_errorbar(aes(ymin =mean_den -sd, ymax = mean_den + sd, width = 0), position = position_dodge(0.5)) +
+  scale_color_manual(values = viridis) +
+  geom_vline(xintercept = 2013, color = 'plum', linewidth = 4) +
   geom_point(size = 4, position = position_dodge(0.5)) +
   geom_line(, position = position_dodge(0.5))+
   labs(y = bquote(paste('Bull kelp density (# ',~m^-2, ')')), x = 'Year') +
   scale_x_continuous(breaks = seq(1999, 2025, 1)) +
-  theme(legend.position = c(.7, .7), axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1), axis.ticks.x = element_line(), panel.grid = element_blank()) 
+  coord_cartesian(ylim = c(0, 6)) + # prevents the scale from showing the full error bar
+  theme_bw() +
+  theme(legend.position = 'none', axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1), axis.ticks.x = element_line(), panel.grid = element_blank()) 
 ```
 
